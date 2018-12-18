@@ -6,7 +6,7 @@ gt is a simple cli to download/upload files via multiple file-sharing providers,
 ## Usage
 
 ```
-$ qt
+$ gt
 Usage: ./gt [file] ... [url] ...
   -f string
     	Sender email.
@@ -22,11 +22,11 @@ Usage: ./gt [file] ... [url] ...
 Example of upload files
 
 ```
-$ qt /some/file1.txt file2.txt
+$ gt /some/file1.txt file2.txt
 ```
 
 Example of download files
 
 ```
-$ qt https://we.tl/t-qQz6vBtrr8
+$ gt https://we.tl/t-qQz6vBtrr8
 ```
