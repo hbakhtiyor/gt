@@ -59,6 +59,8 @@ func main() {
 			return
 		}
 
+		// TODO [Copied to clipboard]
+		// https://github.com/atotto/clipboard ?
 		fmt.Printf("\n%s: %v\n", programName, result.ShortenedURL)
 	}
 }

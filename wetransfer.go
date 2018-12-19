@@ -113,7 +113,7 @@ func GetDirectLink(rawURL string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if response.StatusCode != 200 {
+		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
 				log.Printf("GetDirectLink: Error occurs while processing HEAD request: %s %v\n", rawURL, response)
 			}
@@ -149,7 +149,7 @@ func GetDirectLink(rawURL string) (string, error) {
 		return "", err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("GetDirectLink: Error occurs while processing POST request: %s %s %v\n", rawURL, bodyBytes, response)
@@ -194,7 +194,7 @@ func DownloadFile(rawURL string) error {
 		return err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("DownloadFile: Error occurs while processing GET request: %s %s %v\n", rawURL, bodyBytes, response)
@@ -235,7 +235,7 @@ func PrepareEmailUpload(fileNames []string, message string, sender string, recip
 		return nil, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("PrepareEmailUpload: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
@@ -282,7 +282,7 @@ func PrepareLinkUpload(fileNames []string, message string) (*WeID, error) {
 		return nil, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("PrepareLinkUpload: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
@@ -331,7 +331,7 @@ func PrepareFileUpload(transferID string, filePath string) (*WeID, error) {
 		return nil, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("PrepareFileUpload: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
@@ -368,7 +368,7 @@ func FinalizeUpload(transferID string) (*WeShortenedURL, error) {
 		return nil, err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("FinalizeUpload: Error occurs while processing PUT request: %s %v\n", bodyBytes, response)
@@ -443,7 +443,7 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			return err
 		}
 		defer response.Body.Close()
-		if response.StatusCode != 200 {
+		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
 				bodyBytes, _ := ioutil.ReadAll(response.Body)
 				log.Printf("UploadChunks: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
@@ -474,7 +474,7 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			return err
 		}
 		defer response.Body.Close()
-		if response.StatusCode != 200 {
+		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
 				bodyBytes, _ := ioutil.ReadAll(response.Body)
 				log.Printf("UploadChunks: Error occurs while processing OPTIONS request: %s %v\n", bodyBytes, response)
@@ -497,7 +497,7 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			return err
 		}
 		defer response.Body.Close()
-		if response.StatusCode != 200 {
+		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
 				bodyBytes, _ := ioutil.ReadAll(response.Body)
 				log.Printf("UploadChunks: Error occurs while processing PUT request: %s %v\n", bodyBytes, response)
@@ -529,7 +529,7 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 		return err
 	}
 	defer response.Body.Close()
-	if response.StatusCode != 200 {
+	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("UploadChunks: Error occurs while processing PUT request: %s %v\n", bodyBytes, response)
