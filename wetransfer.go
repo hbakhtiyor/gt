@@ -18,7 +18,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,6 +149,7 @@ func GetDirectLink(rawURL string) (string, error) {
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
+		// TODO {"message":"No download access to this Transfer"}
 		if Debug {
 			bodyBytes, _ := ioutil.ReadAll(response.Body)
 			log.Printf("GetDirectLink: Error occurs while processing POST request: %s %s %v\n", rawURL, bodyBytes, response)
@@ -170,48 +170,6 @@ func GetDirectLink(rawURL string) (string, error) {
 	}
 
 	return result.DirectLink, nil
-}
-
-// DownloadFile downloads a file from the given a `we.tl/' or `wetransfer.com/downloads/' URL.
-//
-// First a direct link is retrieved (via GetDirectLink()), the filename will
-// be extracted to it and it will be fetched and stored on the current
-// working directory.
-func DownloadFile(rawURL string) error {
-	directLink, err := GetDirectLink(rawURL)
-	if err != nil {
-		return err
-	}
-	URL, err := url.Parse(directLink)
-	if err != nil {
-		return err
-	}
-	paths := strings.Split(URL.Path, "/")
-	fileName := paths[len(paths)-1]
-
-	response, err := http.Get(directLink)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("DownloadFile: Error occurs while processing GET request: %s %s %v\n", rawURL, bodyBytes, response)
-		}
-		return errors.New(response.Status)
-	}
-
-	reader := bufio.NewReader(response.Body)
-	file, err := os.Create(fileName)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if _, err = io.Copy(file, reader); err != nil {
-		return err
-	}
-	return nil
 }
 
 // PrepareEmailUpload returns the parsed JSON response.
