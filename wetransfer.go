@@ -15,9 +15,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,9 +62,9 @@ type WeURL struct {
 
 type WeUpload struct {
 	FileNames  []string `json:"filenames"`
-	From       string   `json:"from"`
+	From       string   `json:"from,omitempty"`
 	Message    string   `json:"message"`
-	Recipients []string `json:"recipients"`
+	Recipients []string `json:"recipients,omitempty"`
 	UILanguage string   `json:"ui_language"`
 }
 
@@ -114,7 +114,8 @@ func GetDirectLink(rawURL string) (string, error) {
 		}
 		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
-				log.Printf("GetDirectLink: Error occurs while processing HEAD request: %s %v\n", rawURL, response)
+				responseDump, _ := httputil.DumpResponse(response, true)
+				log.Printf("GetDirectLink: Error occurs while processing HEAD request: %s, response: %s\n", rawURL, responseDump)
 			}
 			return "", errors.New(response.Status)
 		}
@@ -138,6 +139,10 @@ func GetDirectLink(rawURL string) (string, error) {
 		return "", err
 	}
 
+	if Debug {
+		log.Printf("GetDirectLink: Generated json data: %s\n", b.String())
+	}
+
 	response, err := http.Post(
 		fmt.Sprintf(WeTransferDownloadURL, transferID),
 		"application/json; charset=utf-8",
@@ -151,17 +156,15 @@ func GetDirectLink(rawURL string) (string, error) {
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		// TODO {"message":"No download access to this Transfer"}
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("GetDirectLink: Error occurs while processing POST request: %s %s %v\n", rawURL, bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("GetDirectLink: Error occurs while processing POST request: %s %s\n", rawURL, responseDump)
 		}
 		return "", errors.New(response.Status)
 	}
 
 	if Debug {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		//reset the response body to the original unread state
-		response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-		log.Printf("GetDirectLink: Received body while processing POST request: %s %s %v\n", rawURL, bodyBytes, response)
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("GetDirectLink: Received body while processing POST request: %s %s\n", rawURL, responseDump)
 	}
 
 	result := &WeDirectLink{}
@@ -183,6 +186,10 @@ func PrepareEmailUpload(fileNames []string, message string, sender string, recip
 		return nil, err
 	}
 
+	if Debug {
+		log.Printf("PrepareEmailUpload: Generated json data: %s\n", b.String())
+	}
+
 	response, err := http.Post(
 		WeTransferUploadEmailURL,
 		"application/json; charset=utf-8",
@@ -195,16 +202,14 @@ func PrepareEmailUpload(fileNames []string, message string, sender string, recip
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("PrepareEmailUpload: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("PrepareEmailUpload: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 	if Debug {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		//reset the response body to the original unread state
-		response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-		log.Printf("PrepareEmailUpload: Received body while processing POST request: %s %v\n", bodyBytes, response)
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("PrepareEmailUpload: Received body while processing POST request: %s\n", responseDump)
 	}
 	result := &WeID{}
 
@@ -230,6 +235,10 @@ func PrepareLinkUpload(fileNames []string, message string) (*WeID, error) {
 		return nil, err
 	}
 
+	if Debug {
+		log.Printf("PrepareLinkUpload: Generated json data: %s\n", b.String())
+	}
+
 	response, err := http.Post(
 		WeTransferUploadLinkURL,
 		"application/json; charset=utf-8",
@@ -242,16 +251,14 @@ func PrepareLinkUpload(fileNames []string, message string) (*WeID, error) {
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("PrepareLinkUpload: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("PrepareLinkUpload: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 	if Debug {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		//reset the response body to the original unread state
-		response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-		log.Printf("PrepareLinkUpload: Received body while processing POST request: %s %v\n", bodyBytes, response)
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("PrepareLinkUpload: Received body while processing POST request: %s\n", responseDump)
 	}
 
 	result := &WeID{}
@@ -279,6 +286,10 @@ func PrepareFileUpload(transferID string, filePath string) (*WeID, error) {
 		return nil, err
 	}
 
+	if Debug {
+		log.Printf("PrepareFileUpload: Generated json data: %s\n", b.String())
+	}
+
 	response, err := http.Post(
 		fmt.Sprintf(WeTransferFilesURL, transferID),
 		"application/json; charset=utf-8",
@@ -291,16 +302,14 @@ func PrepareFileUpload(transferID string, filePath string) (*WeID, error) {
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("PrepareFileUpload: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("PrepareFileUpload: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 	if Debug {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		//reset the response body to the original unread state
-		response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-		log.Printf("PrepareFileUpload: Received body while processing POST request: %s %v\n", bodyBytes, response)
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("PrepareFileUpload: Received body while processing POST request: %s\n", responseDump)
 	}
 
 	result := &WeID{}
@@ -328,16 +337,14 @@ func FinalizeUpload(transferID string) (*WeShortenedURL, error) {
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("FinalizeUpload: Error occurs while processing PUT request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("FinalizeUpload: Error occurs while processing PUT request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 	if Debug {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		//reset the response body to the original unread state
-		response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-		log.Printf("FinalizeUpload: Received body while processing PUT request: %s %v\n", bodyBytes, response)
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("FinalizeUpload: Received body while processing PUT request: %s\n", responseDump)
 	}
 
 	result := &WeShortenedURL{}
@@ -384,11 +391,15 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 		}
 		chunkNumber++
 
-		j := &WeChunk{crc32.ChecksumIEEE(chunk), chunkNumber, chunkSize, 0}
+		j := &WeChunk{crc32.ChecksumIEEE(chunk[:chunkSize]), chunkNumber, chunkSize, 0}
 
 		b := bytes.NewBuffer(nil)
 		if err := json.NewEncoder(b).Encode(j); err != nil {
 			return err
+		}
+
+		if Debug {
+			log.Printf("UploadChunks: Generated json data: %s\n", b.String())
 		}
 
 		response, err := http.Post(
@@ -396,23 +407,21 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			"application/json; charset=utf-8",
 			b,
 		)
-
 		if err != nil {
 			return err
 		}
 		defer response.Body.Close()
+
 		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
-				bodyBytes, _ := ioutil.ReadAll(response.Body)
-				log.Printf("UploadChunks: Error occurs while processing POST request: %s %v\n", bodyBytes, response)
+				responseDump, _ := httputil.DumpResponse(response, true)
+				log.Printf("UploadChunks: Error occurs while processing POST request: %s\n", responseDump)
 			}
 			return errors.New(response.Status)
 		}
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			//reset the response body to the original unread state
-			response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-			log.Printf("UploadChunks: Received body while processing POST request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("UploadChunks: Received body while processing POST request: %s\n", responseDump)
 		}
 
 		result := &WeURL{}
@@ -421,6 +430,7 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			return err
 		}
 
+		response.Body.Close()
 		req, err := http.NewRequest(http.MethodOptions, result.RawURL, nil)
 		if err != nil {
 			return err
@@ -432,21 +442,21 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			return err
 		}
 		defer response.Body.Close()
+
 		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
-				bodyBytes, _ := ioutil.ReadAll(response.Body)
-				log.Printf("UploadChunks: Error occurs while processing OPTIONS request: %s %v\n", bodyBytes, response)
+				responseDump, _ := httputil.DumpResponse(response, true)
+				log.Printf("UploadChunks: Error occurs while processing OPTIONS request: %s\n", responseDump)
 			}
 			return errors.New(response.Status)
 		}
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			//reset the response body to the original unread state
-			response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-			log.Printf("UploadChunks: Received body while processing OPTIONS request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("UploadChunks: Received body while processing OPTIONS request: %s, status: %s\n", responseDump, response.Status)
 		}
+		response.Body.Close()
 
-		req, err = http.NewRequest(http.MethodPut, result.RawURL, bytes.NewBuffer(chunk))
+		req, err = http.NewRequest(http.MethodPut, result.RawURL, bytes.NewBuffer(chunk[:chunkSize]))
 		if err != nil {
 			return err
 		}
@@ -455,19 +465,19 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 			return err
 		}
 		defer response.Body.Close()
+
 		if response.StatusCode < 200 || response.StatusCode > 299 {
 			if Debug {
-				bodyBytes, _ := ioutil.ReadAll(response.Body)
-				log.Printf("UploadChunks: Error occurs while processing PUT request: %s %v\n", bodyBytes, response)
+				responseDump, _ := httputil.DumpResponse(response, true)
+				log.Printf("UploadChunks: Error occurs while processing PUT request: %s\n", responseDump)
 			}
 			return errors.New(response.Status)
 		}
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			//reset the response body to the original unread state
-			response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-			log.Printf("UploadChunks: Received body while processing PUT request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("UploadChunks: Received body while processing PUT request: %s\n", responseDump)
 		}
+		response.Body.Close()
 	}
 
 	j := &WeChunkCount{chunkNumber}
@@ -475,6 +485,10 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return err
+	}
+
+	if Debug {
+		log.Printf("UploadChunks: Generated json data: %s\n", b.String())
 	}
 
 	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf(WeTransferFinalizeMPPURL, transferID, fileID), b)
@@ -489,16 +503,14 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
-			bodyBytes, _ := ioutil.ReadAll(response.Body)
-			log.Printf("UploadChunks: Error occurs while processing PUT request: %s %v\n", bodyBytes, response)
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("UploadChunks: Error occurs while processing PUT request: %s\n", responseDump)
 		}
 		return errors.New(response.Status)
 	}
 	if Debug {
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
-		//reset the response body to the original unread state
-		response.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
-		log.Printf("UploadChunks: Received body while processing PUT request: %s %v\n", bodyBytes, response)
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("UploadChunks: Received body while processing PUT request: %s\n", responseDump)
 	}
 
 	return nil
