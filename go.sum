@@ -1,1 +1,4 @@
-github.com/cavaliercoder/grab v2.0.0+incompatible/go.mod h1:tTBkfNqSBfuMmMBFaO2phgyhdYhiZQ/+iXCZDzcDsMI=
+github.com/hbakhtiyor/grab v2.0.0+incompatible h1:x+dQSWKjhMnTYNCLPd8XrVl1vM4rehWoMVO3X31ugi4=
+github.com/hbakhtiyor/grab v2.0.0+incompatible/go.mod h1:ao2v+w1+nllsyI3767z+4afD0KjODm0mx6pipvBigvs=
+github.com/hbakhtiyor/grab v2.0.1-0.20181222132738-723061bb4300+incompatible h1:yQ02d4XHEUFFMYja/BPGNNVqMVGYrV5cecWskcW71LM=
+github.com/hbakhtiyor/grab v2.0.1-0.20181222132738-723061bb4300+incompatible/go.mod h1:ao2v+w1+nllsyI3767z+4afD0KjODm0mx6pipvBigvs=

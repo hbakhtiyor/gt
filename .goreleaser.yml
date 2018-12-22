@@ -1,6 +1,6 @@
 project_name: gt
 build:
-  main: main.go
+  main: .
   binary: gt
   ldflags: -s -w -X main.Version="v{{.Version}}-{{.Date}}"
   env:
