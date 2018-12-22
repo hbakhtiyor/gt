@@ -530,7 +530,7 @@ func UploadChunks(transferID string, fileID string, filePath string, defaultChun
 //
 // If both sender and recipient parameters are passed the email upload will be
 // used. Otherwise, the link upload will be used.
-func UploadFile(filePaths []string, fileNames []string, message string, sender string, recipients []string, limitParallel int) (*WeShortenedURL, error) {
+func UploadFile(filePaths []string, fileNames []string, message string, sender string, recipients []string, workers int) (*WeShortenedURL, error) {
 	transferID := ""
 	if sender != "" && len(recipients) > 0 {
 		// email upload
@@ -569,7 +569,7 @@ func UploadFile(filePaths []string, fileNames []string, message string, sender s
 				return
 			}
 		}(filePath)
-		if (i+1)%limitParallel == 0 {
+		if (i+1)%workers == 0 {
 			wg.Wait()
 		}
 	}

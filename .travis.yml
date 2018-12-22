@@ -1,0 +1,12 @@
+language: go
+
+go:
+  - "1.11"
+
+env:
+  - "PATH=/home/travis/gopath/bin:$PATH"
+
+install: true
+
+script:
+  - env GO111MODULE=on go build -v

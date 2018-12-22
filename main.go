@@ -119,7 +119,7 @@ func downloadFiles(rawURLs []string, workers int) error {
 	directLinks := getDownloadLinks(rawURLs)
 
 	if len(directLinks) == 0 {
-		return fmt.Errorf("There are no url(s) to download")
+		return fmt.Errorf("There are no url(s) to download\n")
 	}
 
 	fmt.Printf("Downloading %d files...\n", len(directLinks))
