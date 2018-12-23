@@ -4,8 +4,7 @@ go:
   - "1.11"
 
 env:
-  - "PATH=/home/travis/gopath/bin:$PATH"
-  - GO111MODULE=on
+  - PATH=/home/travis/gopath/bin:$PATH GO111MODULE=on
 
 # calls goreleaser
 deploy:
