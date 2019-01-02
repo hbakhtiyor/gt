@@ -117,11 +117,6 @@ func CheckServerVersion(service string, ignoreVersion bool) (bool, error) {
 	return false, nil
 }
 
-// base64 encode bytes with url-safe alphabet and strip padding
-func UnPaddedURLSafe64Encode(b []byte) string {
-	return base64.RawURLEncoding.EncodeToString(b)
-}
-
 // Decode url-safe base64 string, with or without padding, to bytes
 func UnPaddedURLSafe64Decode(s string) ([]byte, error) {
 	// repeat = (4 - len(s) % 4) with URLEncoding?
@@ -366,8 +361,8 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-File-Metadata", UnPaddedURLSafe64Encode(encMeta))
-	req.Header.Set("Authorization", "send-v1 "+UnPaddedURLSafe64Encode(key.AuthKey))
+	req.Header.Set("X-File-Metadata", base64.RawURLEncoding.EncodeToString(encMeta))
+	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.AuthKey))
 	// binary/octet-stream,  "application/octet-stream"
 	req.Header.Set("Content-Type", contentType)
 	response, err := DefaultClient.Do(req)
@@ -395,7 +390,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 	}
 
 	secretFile := &SecretFile{}
-	secretFile.SecretUrl = result.URL + "#" + UnPaddedURLSafe64Encode(key.SecretKey)
+	secretFile.SecretUrl = result.URL + "#" + base64.RawURLEncoding.EncodeToString(key.SecretKey)
 	secretFile.FileID = result.ID
 	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
 	secretFile.FileNonce, err = UnPaddedURLSafe64Decode(fileNonce)
@@ -474,7 +469,7 @@ func ApiMetadata(service, fileID string, authKey []byte) (*map[string]interface{
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "send-v1 "+UnPaddedURLSafe64Encode(authKey))
+	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(authKey))
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
