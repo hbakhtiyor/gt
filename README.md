@@ -30,3 +30,9 @@ Example of download files
 ```
 $ gt https://we.tl/t-qQz6vBtrr8
 ```
+
+## Install
+
+[Download the latest release for your system](https://github.com/hbakhtiyor/gt/releases/latest).
+
+Or, you can [install Go](https://golang.org/dl/) and build from source with `go get -u github.com/hbakhtiyor/gt`. Since *gt* uses [Go modules](https://golang.org/doc/go1.11#modules) it requires Go version 1.11+.
