@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
@@ -30,7 +31,18 @@ const (
 
 // https://github.com/euphoria-io/heim/blob/097b7da2e0b23e9c5828c0e4831a3de660bb5302/proto/security/aesgcm.go
 // https://github.com/mozilla/send/blob/93072c0c1e252efc17c9a52b900a52f0c35489d0/docs/encryption.md
-// TODO https://send.firefox.com/api/info
+
+// Content-Disposition: form-data; name="data"; filename="blob"
+// Content-Type: application/octet-stream
+// {"url":"https://send.firefox.com/download/3a068d79ae/","owner":"b2c2c2235e42dae2bc43","id":"3a068d79ae"}
+
+// TODO https://send.firefox.com/api/info/fileId
+// owner_token
+// {"dlimit":1,"dtotal":0,"ttl":86398000}
+
+// https://send.firefox.com/api/password/fileId
+// auth, owner_token
+
 type Version struct {
 	Version string
 	Commit  string
@@ -42,6 +54,13 @@ type Token struct {
 	DeleteToken string `json:"delete_token,omitempty"`
 	Auth        string `json:"auth,omitempty"`
 	DLimit      int    `json:"dlimit,omitempty"`
+}
+
+type Meta struct {
+	MetaData      string `json:"metadata"`
+	FinalDownload bool   `json:"finalDownload"`
+	Size          int64  `json:"size"`
+	TTL           int64  `json:"ttl"`
 }
 
 type MetaData struct {
@@ -461,16 +480,175 @@ func DecryptMetadata(encMeta []byte, key *ManagedKey) ([]byte, error) {
 	return aesgcm.Open(nil, key.MetaIV, encMeta, nil)
 }
 
-func ApiMetadata(service, fileID string, authKey []byte) (*map[string]interface{}, error) {
+func ApiMetadata(service, fileID string, authKey []byte) (*Meta, []byte, error) {
 	service += "api/metadata/%s"
 
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(service, fileID), nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(authKey))
 	response, err := DefaultClient.Do(req)
+
+	if err != nil {
+		return nil, nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		if Debug {
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("ApiMetadata: Error occurs while processing POST request: %s\n", responseDump)
+		}
+		return nil, nil, errors.New(response.Status)
+	}
+
+	if Debug {
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("ApiMetadata: Received body while processing POST request: %s\n", responseDump)
+	}
+
+	newNonce, err := UnPaddedURLSafe64Decode(strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	result := &Meta{}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return nil, nil, err
+	}
+
+	return result, newNonce, nil
+}
+
+// Given a Send url, download and return the encrypted data and metadata
+func ApiDownload(service, fileID, fileName string, fileSize int64, authKey []byte, key *ManagedKey) error {
+	service += "api/download/%s"
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(service, fileID), nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(authKey))
+	response, err := DefaultClient.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		if Debug {
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("ApiDownload: Error occurs while processing POST request: %s\n", responseDump)
+		}
+		return errors.New(response.Status)
+	}
+
+	if Debug {
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("ApiDownload: Received body while processing POST request: %s\n", responseDump)
+	}
+
+	reader := bufio.NewReader(response.Body)
+	// https://www.w3.org/TR/WebCryptoAPI/#aes-gcm-operations
+	r, err := aesgcm.NewGcmDecryptReader(reader, key.EncryptKey, key.EncryptIV, nil, fileSize)
+	if err != nil {
+		return err
+	}
+
+	file, err := os.Create(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err = io.Copy(file, r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DownloadFile(rawURL, password string, ignoreVersion bool) error {
+	service, fileID, key := SplitKeyURL(rawURL)
+	if status, err := CheckServerVersion(service, ignoreVersion); err != nil {
+		return err
+	} else if !status {
+		return errors.New("Potentially incompatible server version, use --ignore-version to disable version checks")
+	}
+
+	passwordRequired := false
+	//     passwordRequired := CheckForPassword(service + "download/" + fileID + "/")
+	rawKey, err := UnPaddedURLSafe64Decode(key)
+	if err != nil {
+		return err
+	}
+
+	mKey := &ManagedKey{}
+	if !passwordRequired && password == "" {
+		mKey, _ = NewManagedKey(rawKey, "", "")
+	} else if passwordRequired && password != "" {
+		mKey, _ = NewManagedKey(rawKey, password, rawURL)
+		mKey.AuthKey = mKey.NewAuthKey
+	} else if passwordRequired && password == "" {
+		fmt.Scanln("A password is required, please enter it now", password)
+		mKey, _ = NewManagedKey(rawKey, password, rawURL)
+		mKey.AuthKey = mKey.NewAuthKey
+	} else if !passwordRequired && password != "" {
+		fmt.Println("A password was provided but none is required, ignoring...")
+	}
+
+	fmt.Println("Checking if file exists...")
+	// passwordRequired = CheckForPassword(service + "download/" + fileID)
+
+	if password == "" && passwordRequired {
+		return errors.New("This Send url requires a password")
+	}
+
+	nonce, err := GetNonce(service + "download/" + fileID + "/")
+	if err != nil {
+		return err
+	}
+
+	authorisation := SignNonce(mKey.AuthKey, nonce)
+	fmt.Println("Fetching metadata...")
+	meta, nonce, err := ApiMetadata(service, fileID, authorisation)
+
+	encMeta, err := UnPaddedURLSafe64Decode(meta.MetaData)
+	if err != nil {
+		return err
+	}
+
+	metadataBytes, err := DecryptMetadata(encMeta, mKey)
+	if err != nil {
+		return err
+	}
+
+	metadata := &MetaData{}
+
+	if err := json.Unmarshal(metadataBytes, metadata); err != nil {
+		return err
+	}
+
+	mKey.EncryptIV, err = UnPaddedURLSafe64Decode(metadata.IV)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size", metadata.Name, meta.Size-16)
+
+	fmt.Println("Downloading " + rawURL)
+	authorisation = SignNonce(mKey.AuthKey, nonce)
+	err = ApiDownload(service, fileID, metadata.Name, meta.Size, authorisation, mKey)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func GetNonce(url string) ([]byte, error) {
+	response, err := http.Get(url)
 
 	if err != nil {
 		return nil, err
@@ -479,25 +657,16 @@ func ApiMetadata(service, fileID string, authKey []byte) (*map[string]interface{
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("ApiMetadata: Error occurs while processing POST request: %s\n", responseDump)
+			log.Printf("GetNonce: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("ApiMetadata: Received body while processing POST request: %s\n", responseDump)
+		log.Printf("GetNonce: Received body while processing POST request: %s\n", responseDump)
 	}
 
-	// newNonce, err := UnPaddedURLSafe64Decode(strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1))
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	result := &map[string]interface{}{}
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	return result, nil
+	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
+	return UnPaddedURLSafe64Decode(fileNonce)
 }
