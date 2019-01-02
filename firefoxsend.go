@@ -47,7 +47,7 @@ type Token struct {
 type Meta struct {
 	MetaData      string `json:"metadata"`
 	FinalDownload bool   `json:"finalDownload"`
-	Size          int64  `json:"size"`
+	Size          int64  `json:"size,string"`
 	TTL           int64  `json:"ttl"`
 }
 
@@ -508,7 +508,7 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
 
-	rawKey, err := base64.StdEncoding.DecodeString(key)
+	rawKey, err := base64.RawURLEncoding.DecodeString(key)
 	if err != nil {
 		return err
 	}
@@ -533,8 +533,11 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 	authorisation := mKey.SignNonce(nonce)
 	fmt.Println("Fetching metadata...")
 	meta, nonce, err := ApiMetadata(service, fileID, authorisation)
+	if err != nil {
+		return err
+	}
 
-	encMeta, err := base64.StdEncoding.DecodeString(meta.MetaData)
+	encMeta, err := base64.RawURLEncoding.DecodeString(meta.MetaData)
 	if err != nil {
 		return err
 	}
@@ -544,12 +547,12 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		return err
 	}
 
-	mKey.EncryptIV, err = base64.StdEncoding.DecodeString(metadata.IV)
+	mKey.EncryptIV, err = base64.RawURLEncoding.DecodeString(metadata.IV)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size", metadata.Name, meta.Size-16)
+	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", metadata.Name, meta.Size-16)
 
 	fmt.Println("Downloading " + rawURL)
 	authorisation = mKey.SignNonce(nonce)
