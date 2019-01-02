@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"io"
@@ -123,6 +124,13 @@ func (key *ManagedKey) DeriveMetaKey() *ManagedKey {
 	key.MetaKey = rawKey[:n]
 
 	return key
+}
+
+// Sign the server nonce from the WWW-Authenticate header with an authKey
+func (key *ManagedKey) SignNonce(nonce []byte) []byte {
+	mac := hmac.New(sha256.New, key.AuthKey)
+	mac.Write(nonce)
+	return mac.Sum(nil)
 }
 
 func (key *ManagedKey) Err() error {

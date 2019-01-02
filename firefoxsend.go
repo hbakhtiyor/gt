@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -39,9 +37,6 @@ const (
 // TODO https://send.firefox.com/api/info/fileId
 // owner_token
 // {"dlimit":1,"dtotal":0,"ttl":86398000}
-
-// https://send.firefox.com/api/password/fileId
-// auth, owner_token
 
 type Version struct {
 	Version string
@@ -114,14 +109,14 @@ func CheckServerVersion(service string, ignoreVersion bool) (bool, error) {
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("checkServerVersion: Error occurs while processing POST request: %s %s\n", service, responseDump)
+			log.Printf("CheckServerVersion: Error occurs while processing POST request: %s %s\n", service, responseDump)
 		}
 		return false, errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("checkServerVersion: Received body while processing POST request: %s %s\n", service, responseDump)
+		log.Printf("CheckServerVersion: Received body while processing POST request: %s %s\n", service, responseDump)
 	}
 
 	result := &Version{}
@@ -134,12 +129,6 @@ func CheckServerVersion(service string, ignoreVersion bool) (bool, error) {
 	}
 
 	return false, nil
-}
-
-// Decode url-safe base64 string, with or without padding, to bytes
-func UnPaddedURLSafe64Decode(s string) ([]byte, error) {
-	// repeat = (4 - len(s) % 4) with URLEncoding?
-	return base64.StdEncoding.DecodeString(s)
 }
 
 // delete.go
@@ -342,13 +331,6 @@ func EncryptMetadata(key *ManagedKey, fileName, fileType string) ([]byte, error)
 	return aesgcm.Seal(nil, key.MetaIV, b.Bytes(), nil), nil
 }
 
-// sign the server nonce from the WWW-Authenticate header with an authKey
-func SignNonce(key, nonce []byte) []byte {
-	mac := hmac.New(sha256.New, key)
-	mac.Write(nonce)
-	return mac.Sum(nil)
-}
-
 // Uploads data to Send.
 func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*SecretFile, error) {
 	service += "api/upload"
@@ -412,7 +394,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 	secretFile.SecretUrl = result.URL + "#" + base64.RawURLEncoding.EncodeToString(key.SecretKey)
 	secretFile.FileID = result.ID
 	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
-	secretFile.FileNonce, err = UnPaddedURLSafe64Decode(fileNonce)
+	secretFile.FileNonce, err = base64.StdEncoding.DecodeString(fileNonce)
 	if err != nil {
 		return nil, err
 	}
@@ -508,7 +490,7 @@ func ApiMetadata(service, fileID string, authKey []byte) (*Meta, []byte, error) 
 		log.Printf("ApiMetadata: Received body while processing POST request: %s\n", responseDump)
 	}
 
-	newNonce, err := UnPaddedURLSafe64Decode(strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1))
+	newNonce, err := base64.StdEncoding.DecodeString(strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -585,7 +567,7 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
 
-	rawKey, err := UnPaddedURLSafe64Decode(key)
+	rawKey, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
 		return err
 	}
@@ -607,11 +589,11 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		return err
 	}
 
-	authorisation := SignNonce(mKey.AuthKey, nonce)
+	authorisation := mKey.SignNonce(nonce)
 	fmt.Println("Fetching metadata...")
 	meta, nonce, err := ApiMetadata(service, fileID, authorisation)
 
-	encMeta, err := UnPaddedURLSafe64Decode(meta.MetaData)
+	encMeta, err := base64.StdEncoding.DecodeString(meta.MetaData)
 	if err != nil {
 		return err
 	}
@@ -627,7 +609,7 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		return err
 	}
 
-	mKey.EncryptIV, err = UnPaddedURLSafe64Decode(metadata.IV)
+	mKey.EncryptIV, err = base64.StdEncoding.DecodeString(metadata.IV)
 	if err != nil {
 		return err
 	}
@@ -635,7 +617,7 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size", metadata.Name, meta.Size-16)
 
 	fmt.Println("Downloading " + rawURL)
-	authorisation = SignNonce(mKey.AuthKey, nonce)
+	authorisation = mKey.SignNonce(nonce)
 	err = ApiDownload(service, fileID, metadata.Name, meta.Size, authorisation, mKey)
 	if err != nil {
 		return err
@@ -665,5 +647,5 @@ func GetNonce(url string) ([]byte, error) {
 	}
 
 	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
-	return UnPaddedURLSafe64Decode(fileNonce)
+	return base64.StdEncoding.DecodeString(fileNonce)
 }
