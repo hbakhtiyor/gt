@@ -253,12 +253,12 @@ func SetPassword(url, ownerToken, password string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	mKey, err := NewManagedKey(rawKey, password, url)
-	if err != nil {
-		return false, err
+	mKey := NewManagedKey(rawKey, password, url)
+	if mKey.Err() != nil {
+		return false, mKey.Err()
 	}
 
-	return ApiPassword(service, fileID, ownerToken, mKey.NewAuthKey)
+	return ApiPassword(service, fileID, ownerToken, mKey.AuthKey)
 }
 
 // params.go
@@ -437,9 +437,9 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 	}
 
 	fmt.Printf("Encrypting data from \"%s\"\n", fileName)
-	key, err := NewManagedKey(nil, "", "")
-	if err != nil {
-		return nil, err
+	key := NewManagedKey(nil, "", "")
+	if key.Err() != nil {
+		return nil, key.Err()
 	}
 
 	encMeta, err := EncryptMetadata(key, fileName, "application/octet-stream")
@@ -579,23 +579,20 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 
 	passwordRequired := false
 	//     passwordRequired := CheckForPassword(service + "download/" + fileID + "/")
+	if passwordRequired && password == "" {
+		fmt.Scanln("A password is required, please enter it now", password)
+	} else if !passwordRequired && password != "" {
+		fmt.Println("A password was provided but none is required, ignoring...")
+	}
+
 	rawKey, err := UnPaddedURLSafe64Decode(key)
 	if err != nil {
 		return err
 	}
 
-	mKey := &ManagedKey{}
-	if !passwordRequired && password == "" {
-		mKey, _ = NewManagedKey(rawKey, "", "")
-	} else if passwordRequired && password != "" {
-		mKey, _ = NewManagedKey(rawKey, password, rawURL)
-		mKey.AuthKey = mKey.NewAuthKey
-	} else if passwordRequired && password == "" {
-		fmt.Scanln("A password is required, please enter it now", password)
-		mKey, _ = NewManagedKey(rawKey, password, rawURL)
-		mKey.AuthKey = mKey.NewAuthKey
-	} else if !passwordRequired && password != "" {
-		fmt.Println("A password was provided but none is required, ignoring...")
+	mKey := NewManagedKey(rawKey, password, rawURL)
+	if mKey.Err() != nil {
+		return mKey.Err()
 	}
 
 	fmt.Println("Checking if file exists...")
