@@ -651,3 +651,59 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 
 	return r, nil
 }
+
+// Decrypt file metadata with the same method as the Send browser/js client
+func DecryptMetadata(encMeta []byte, keys *SecretKeys) ([]byte, error) {
+	block, err := aes.NewCipher(keys.MetaKey)
+	if err != nil {
+		return nil, err
+	}
+
+	aesgcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	return aesgcm.Open(nil, keys.MetaIV, encMeta, nil)
+}
+
+func ApiMetadata(service, fileID string, authKey []byte) (*map[string]interface{}, error) {
+	service += "api/metadata/%s"
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(service, fileID), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "send-v1 "+UnPaddedURLSafe64Encode(authKey))
+	response, err := DefaultClient.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		if Debug {
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("ApiMetadata: Error occurs while processing POST request: %s\n", responseDump)
+		}
+		return nil, errors.New(response.Status)
+	}
+
+	if Debug {
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("ApiMetadata: Received body while processing POST request: %s\n", responseDump)
+	}
+
+	// newNonce, err := UnPaddedURLSafe64Decode(strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1))
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	result := &map[string]interface{}{}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
