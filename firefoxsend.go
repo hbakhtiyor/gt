@@ -5,7 +5,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -20,9 +19,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/crypto/hkdf"
-	"golang.org/x/crypto/pbkdf2"
 
 	aesgcm "github.com/hbakhtiyor/openssl_gcm"
 )
@@ -39,18 +35,6 @@ type Version struct {
 	Version string
 	Commit  string
 	Source  string
-}
-
-type SecretKeys struct {
-	SecretKey  []byte
-	EncryptKey []byte
-	EncryptIV  []byte
-	AuthKey    []byte
-	MetaKey    []byte
-	Password   string
-	URL        string
-	NewAuthKey []byte
-	MetaIV     []byte
 }
 
 type Token struct {
@@ -142,82 +126,6 @@ func UnPaddedURLSafe64Encode(b []byte) string {
 func UnPaddedURLSafe64Decode(s string) ([]byte, error) {
 	// repeat = (4 - len(s) % 4) with URLEncoding?
 	return base64.StdEncoding.DecodeString(s)
-}
-
-func NewSecretKeys(secretKey []byte, password string, url string) (*SecretKeys, error) {
-	keys := &SecretKeys{
-		SecretKey: secretKey,
-		Password:  password,
-		URL:       url,
-	}
-
-	if keys.SecretKey == nil {
-		keys.SecretKey, _ = keys.RandomSecretKey()
-	}
-
-	keys.EncryptKey, _ = keys.DeriveEncryptKey()
-	keys.EncryptIV, _ = keys.RandomEncryptIV()
-	keys.AuthKey, _ = keys.DeriveAuthKey()
-	keys.MetaKey, _ = keys.DeriveMetaKey()
-	keys.MetaIV = make([]byte, 12) // Send uses a 12 byte all-zero IV when encrypting metadata
-	if password != "" && url != "" {
-		keys.DeriveNewAuthKey(password, url)
-	}
-
-	return keys, nil
-}
-
-func (s *SecretKeys) RandomSecretKey() ([]byte, error) {
-	b := make([]byte, 16)
-	n, err := rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-
-	return b[:n], nil
-}
-
-func (s *SecretKeys) RandomEncryptIV() ([]byte, error) {
-	b := make([]byte, 12)
-	n, err := rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-
-	return b[:n], nil
-}
-
-func (s *SecretKeys) DeriveEncryptKey() ([]byte, error) {
-	hkdf := hkdf.New(sha256.New, s.SecretKey, nil, []byte("encryption"))
-	key := make([]byte, 16)
-	if _, err := io.ReadFull(hkdf, key); err != nil {
-		return nil, err
-	}
-	return key, nil
-}
-
-func (s *SecretKeys) DeriveAuthKey() ([]byte, error) {
-	hkdf := hkdf.New(sha256.New, s.SecretKey, nil, []byte("authentication"))
-	key := make([]byte, 64)
-	if _, err := io.ReadFull(hkdf, key); err != nil {
-		return nil, err
-	}
-	return key, nil
-}
-
-func (s *SecretKeys) DeriveMetaKey() ([]byte, error) {
-	hkdf := hkdf.New(sha256.New, s.SecretKey, nil, []byte("metadata"))
-	key := make([]byte, 16)
-	if _, err := io.ReadFull(hkdf, key); err != nil {
-		return nil, err
-	}
-	return key, nil
-}
-func (s *SecretKeys) DeriveNewAuthKey(password string, url string) []byte {
-	s.Password = password
-	s.URL = url
-	s.NewAuthKey = pbkdf2.Key([]byte(password), []byte(url), 100, 64, sha256.New)
-	return s.NewAuthKey
 }
 
 // delete.go
@@ -331,12 +239,12 @@ func SetPassword(url, ownerToken, password string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	keys, err := NewSecretKeys(rawKey, password, url)
+	mKey, err := NewManagedKey(rawKey, password, url)
 	if err != nil {
 		return false, err
 	}
 
-	return ApiPassword(service, fileID, ownerToken, keys.NewAuthKey)
+	return ApiPassword(service, fileID, ownerToken, mKey.NewAuthKey)
 }
 
 // params.go
@@ -390,9 +298,9 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 }
 
 // Encrypt file metadata with the same method as the Send browser/js client
-func EncryptMetadata(keys *SecretKeys, fileName, fileType string) ([]byte, error) {
+func EncryptMetadata(key *ManagedKey, fileName, fileType string) ([]byte, error) {
 	metadata := &MetaData{
-		base64.RawURLEncoding.EncodeToString(keys.EncryptIV),
+		base64.RawURLEncoding.EncodeToString(key.EncryptIV),
 		fileName,
 		fileType,
 	}
@@ -406,7 +314,7 @@ func EncryptMetadata(keys *SecretKeys, fileName, fileType string) ([]byte, error
 		log.Printf("EncryptMetadata: Generated json data: %s\n", b.String())
 	}
 
-	block, err := aes.NewCipher(keys.MetaKey)
+	block, err := aes.NewCipher(key.MetaKey)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +325,7 @@ func EncryptMetadata(keys *SecretKeys, fileName, fileType string) ([]byte, error
 	}
 
 	// WebcryptoAPI expects the gcm tag at the end of the ciphertext, return them concatenated
-	return aesgcm.Seal(nil, keys.MetaIV, b.Bytes(), nil), nil
+	return aesgcm.Seal(nil, key.MetaIV, b.Bytes(), nil), nil
 }
 
 // sign the server nonce from the WWW-Authenticate header with an authKey
@@ -428,8 +336,7 @@ func SignNonce(key, nonce []byte) []byte {
 }
 
 // Uploads data to Send.
-// Caution! Data is uploaded as given, this function will not encrypt it for you
-func ApiUpload(service string, file *os.File, encMeta []byte, keys *SecretKeys, fileName string) (*SecretFile, error) {
+func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*SecretFile, error) {
 	service += "api/upload"
 
 	bodyBuf := &bytes.Buffer{}
@@ -442,7 +349,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, keys *SecretKeys, 
 	}
 
 	// reader := bufio.NewReader(file)
-	r, err := aesgcm.NewGcmEncryptReader(file, keys.EncryptKey, keys.EncryptIV, nil)
+	r, err := aesgcm.NewGcmEncryptReader(file, key.EncryptKey, key.EncryptIV, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +367,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, keys *SecretKeys, 
 		return nil, err
 	}
 	req.Header.Set("X-File-Metadata", UnPaddedURLSafe64Encode(encMeta))
-	req.Header.Set("Authorization", "send-v1 "+UnPaddedURLSafe64Encode(keys.AuthKey))
+	req.Header.Set("Authorization", "send-v1 "+UnPaddedURLSafe64Encode(key.AuthKey))
 	// binary/octet-stream,  "application/octet-stream"
 	req.Header.Set("Content-Type", contentType)
 	response, err := DefaultClient.Do(req)
@@ -488,7 +395,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, keys *SecretKeys, 
 	}
 
 	secretFile := &SecretFile{}
-	secretFile.SecretUrl = result.URL + "#" + UnPaddedURLSafe64Encode(keys.SecretKey)
+	secretFile.SecretUrl = result.URL + "#" + UnPaddedURLSafe64Encode(key.SecretKey)
 	secretFile.FileID = result.ID
 	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
 	secretFile.FileNonce, err = UnPaddedURLSafe64Decode(fileNonce)
@@ -516,18 +423,18 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 	}
 
 	fmt.Printf("Encrypting data from \"%s\"\n", fileName)
-	keys, err := NewSecretKeys(nil, "", "")
+	key, err := NewManagedKey(nil, "", "")
 	if err != nil {
 		return nil, err
 	}
 
-	encMeta, err := EncryptMetadata(keys, fileName, "application/octet-stream")
+	encMeta, err := EncryptMetadata(key, fileName, "application/octet-stream")
 	if err != nil {
 		return nil, err
 	}
 
 	fmt.Printf("Uploading \"%s\"\n", fileName)
-	r, err := ApiUpload(service, file, encMeta, keys, fileName)
+	r, err := ApiUpload(service, file, encMeta, key, fileName)
 	if err != nil {
 		return nil, err
 	}
@@ -545,8 +452,8 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 }
 
 // Decrypt file metadata with the same method as the Send browser/js client
-func DecryptMetadata(encMeta []byte, keys *SecretKeys) ([]byte, error) {
-	block, err := aes.NewCipher(keys.MetaKey)
+func DecryptMetadata(encMeta []byte, key *ManagedKey) ([]byte, error) {
+	block, err := aes.NewCipher(key.MetaKey)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +463,7 @@ func DecryptMetadata(encMeta []byte, keys *SecretKeys) ([]byte, error) {
 		return nil, err
 	}
 
-	return aesgcm.Open(nil, keys.MetaIV, encMeta, nil)
+	return aesgcm.Open(nil, key.MetaIV, encMeta, nil)
 }
 
 func ApiMetadata(service, fileID string, authKey []byte) (*map[string]interface{}, error) {
