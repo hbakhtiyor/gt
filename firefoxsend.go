@@ -3,8 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -20,11 +18,6 @@ import (
 	"strings"
 
 	aesgcm "github.com/hbakhtiyor/openssl_gcm"
-)
-
-const (
-	ChunkSize = 8192
-	SpoolSize = 16 * 1024 * 1024
 )
 
 // https://github.com/euphoria-io/heim/blob/097b7da2e0b23e9c5828c0e4831a3de660bb5302/proto/security/aesgcm.go
@@ -56,12 +49,6 @@ type Meta struct {
 	FinalDownload bool   `json:"finalDownload"`
 	Size          int64  `json:"size"`
 	TTL           int64  `json:"ttl"`
-}
-
-type MetaData struct {
-	IV   string `json:"iv"`
-	Name string `json:"name"`
-	Type string `json:"type"`
 }
 
 type SendReseponse struct {
@@ -167,11 +154,6 @@ func ApiDelete(service, fileID, ownerToken string) (bool, error) {
 		responseDump, _ := httputil.DumpResponse(response, true)
 		log.Printf("ApiDelete: Received body while processing POST request: %s\n", responseDump)
 	}
-
-	// result := &map[string]interface{}{}
-	// if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-	// 	return false, err
-	// }
 
 	result, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -300,37 +282,6 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 	return false, nil
 }
 
-// Encrypt file metadata with the same method as the Send browser/js client
-func EncryptMetadata(key *ManagedKey, fileName, fileType string) ([]byte, error) {
-	metadata := &MetaData{
-		base64.RawURLEncoding.EncodeToString(key.EncryptIV),
-		fileName,
-		fileType,
-	}
-
-	b := bytes.NewBuffer(nil)
-	if err := json.NewEncoder(b).Encode(metadata); err != nil {
-		return nil, err
-	}
-
-	if Debug {
-		log.Printf("EncryptMetadata: Generated json data: %s\n", b.String())
-	}
-
-	block, err := aes.NewCipher(key.MetaKey)
-	if err != nil {
-		return nil, err
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	// WebcryptoAPI expects the gcm tag at the end of the ciphertext, return them concatenated
-	return aesgcm.Seal(nil, key.MetaIV, b.Bytes(), nil), nil
-}
-
 // Uploads data to Send.
 func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*SecretFile, error) {
 	service += "api/upload"
@@ -424,7 +375,12 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 		return nil, key.Err()
 	}
 
-	encMeta, err := EncryptMetadata(key, fileName, "application/octet-stream")
+	metadata := &MetaData{
+		Name: fileName,
+		Type: "application/octet-stream",
+	}
+
+	encMeta, err := metadata.Encrypt(key)
 	if err != nil {
 		return nil, err
 	}
@@ -445,21 +401,6 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 	}
 
 	return r, nil
-}
-
-// Decrypt file metadata with the same method as the Send browser/js client
-func DecryptMetadata(encMeta []byte, key *ManagedKey) ([]byte, error) {
-	block, err := aes.NewCipher(key.MetaKey)
-	if err != nil {
-		return nil, err
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	return aesgcm.Open(nil, key.MetaIV, encMeta, nil)
 }
 
 func ApiMetadata(service, fileID string, authKey []byte) (*Meta, []byte, error) {
@@ -598,14 +539,8 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		return err
 	}
 
-	metadataBytes, err := DecryptMetadata(encMeta, mKey)
+	metadata, err := DecryptMetadata(encMeta, mKey)
 	if err != nil {
-		return err
-	}
-
-	metadata := &MetaData{}
-
-	if err := json.Unmarshal(metadataBytes, metadata); err != nil {
 		return err
 	}
 
