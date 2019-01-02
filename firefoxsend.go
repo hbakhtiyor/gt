@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
@@ -22,9 +21,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spacemonkeygo/openssl"
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/pbkdf2"
+
+	aesgcm "github.com/hbakhtiyor/openssl_gcm"
 )
 
 const (
@@ -32,6 +32,7 @@ const (
 	SpoolSize = 16 * 1024 * 1024
 )
 
+// https://github.com/euphoria-io/heim/blob/097b7da2e0b23e9c5828c0e4831a3de660bb5302/proto/security/aesgcm.go
 // https://github.com/mozilla/send/blob/93072c0c1e252efc17c9a52b900a52f0c35489d0/docs/encryption.md
 // TODO https://send.firefox.com/api/info
 type Version struct {
@@ -140,7 +141,7 @@ func UnPaddedURLSafe64Encode(b []byte) string {
 // Decode url-safe base64 string, with or without padding, to bytes
 func UnPaddedURLSafe64Decode(s string) ([]byte, error) {
 	// repeat = (4 - len(s) % 4) with URLEncoding?
-	return base64.URLEncoding.DecodeString(s)
+	return base64.StdEncoding.DecodeString(s)
 }
 
 func NewSecretKeys(secretKey []byte, password string, url string) (*SecretKeys, error) {
@@ -388,115 +389,6 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 	return false, nil
 }
 
-// Encrypt file data with the same method as the Send browser/js client
-func EncryptFile1(file *os.File, keys *SecretKeys) (*os.File, error) {
-	encFile, err := ioutil.TempFile("", "encdata")
-	if err != nil {
-		return nil, err
-	}
-
-	// defer os.Remove(encFile.Name()) // clean up
-	defer file.Close()
-
-	block, err := aes.NewCipher(keys.EncryptKey)
-	if err != nil {
-		return nil, err
-	}
-
-	aesgcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	reader := bufio.NewReader(file)
-	// chunk := make([]byte, ChunkSize)
-	chunk := make([]byte, 20)
-	for {
-		chunkSize, err := reader.Read(chunk)
-		if err == io.EOF || chunkSize == 0 {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-
-		// https://github.com/euphoria-io/heim/blob/097b7da2e0b23e9c5828c0e4831a3de660bb5302/proto/security/aesgcm.go
-		encData := aesgcm.Seal(nil, keys.EncryptIV[:aesgcm.NonceSize()], chunk[:chunkSize], nil)
-		// tag is the last gcm.Overhead() bytes of returned ciphertext
-		// split := chunkSize - aesgcm.Overhead()
-		// fmt.Println(split, chunkSize, aesgcm.Overhead(), len(encData), encData[chunkSize:])
-		if _, err := encFile.Write(encData); err != nil {
-			return nil, err
-		}
-	}
-
-	// chunk := make([]byte, 1024*1024)
-	// chunkSize, err := reader.Read(chunk)
-	// encData := aesgcm.Seal(chunk[:0], keys.EncryptIV[:aesgcm.NonceSize()], chunk[:chunkSize], nil)
-	// if _, err := encFile.Write(encData); err != nil {
-	// 	return nil, err
-	// }
-	// fmt.Print(encData[:100])
-	// if err := encFile.Close(); err != nil {
-	// 	return nil, err
-	// }
-
-	return encFile, nil
-}
-
-// Encrypt file data with the same method as the Send browser/js client
-func EncryptFile(file *os.File, keys *SecretKeys) (*os.File, error) {
-	encFile, err := ioutil.TempFile("", "encdata")
-	if err != nil {
-		return nil, err
-	}
-
-	// defer os.Remove(encFile.Name()) // clean up
-	defer file.Close()
-
-	ctx, err := openssl.NewGCMEncryptionCipherCtx(len(keys.EncryptKey)*8, nil, keys.EncryptKey, keys.EncryptIV)
-	if err != nil {
-		return nil, err
-	}
-
-	reader := bufio.NewReader(file)
-	chunk := make([]byte, ChunkSize)
-	for {
-		chunkSize, err := reader.Read(chunk)
-		if err == io.EOF || chunkSize == 0 {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-
-		encData, err := ctx.EncryptUpdate(chunk[:chunkSize])
-		if err != nil {
-			return nil, err
-		}
-
-		if _, err := encFile.Write(encData); err != nil {
-			return nil, err
-		}
-	}
-
-	encData, err := ctx.EncryptFinal()
-	if err != nil {
-		return nil, err
-	}
-	if _, err := encFile.Write(encData); err != nil {
-		return nil, err
-	}
-
-	tag, err := ctx.GetTag()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get GCM tag: %v", err)
-	}
-	if _, err := encFile.Write(tag); err != nil {
-		return nil, err
-	}
-
-	return encFile, nil
-}
-
 // Encrypt file metadata with the same method as the Send browser/js client
 func EncryptMetadata(keys *SecretKeys, fileName, fileType string) ([]byte, error) {
 	metadata := &MetaData{
@@ -537,7 +429,7 @@ func SignNonce(key, nonce []byte) []byte {
 
 // Uploads data to Send.
 // Caution! Data is uploaded as given, this function will not encrypt it for you
-func ApiUpload(service string, encData *os.File, encMeta []byte, keys *SecretKeys, fileName string) (*SecretFile, error) {
+func ApiUpload(service string, file *os.File, encMeta []byte, keys *SecretKeys, fileName string) (*SecretFile, error) {
 	service += "api/upload"
 
 	bodyBuf := &bytes.Buffer{}
@@ -549,7 +441,13 @@ func ApiUpload(service string, encData *os.File, encMeta []byte, keys *SecretKey
 		return nil, err
 	}
 
-	_, err = io.Copy(fileWriter, encData)
+	// reader := bufio.NewReader(file)
+	r, err := aesgcm.NewGcmEncryptReader(file, keys.EncryptKey, keys.EncryptIV, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = io.Copy(fileWriter, r)
 	if err != nil {
 		return nil, err
 	}
@@ -623,19 +521,13 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 		return nil, err
 	}
 
-	encData, err := EncryptFile(file, keys)
-	if err != nil {
-		return nil, err
-	}
-
-	encData.Seek(0, 0)
 	encMeta, err := EncryptMetadata(keys, fileName, "application/octet-stream")
 	if err != nil {
 		return nil, err
 	}
 
 	fmt.Printf("Uploading \"%s\"\n", fileName)
-	r, err := ApiUpload(service, encData, encMeta, keys, fileName)
+	r, err := ApiUpload(service, file, encMeta, keys, fileName)
 	if err != nil {
 		return nil, err
 	}
