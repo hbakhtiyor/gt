@@ -59,21 +59,38 @@ type File struct {
 	Owner string `json:"owner"`
 }
 
+type Config struct {
+	BaseURL   string
+	FileID    string
+	SecretKey []byte
+}
+
 // DefaultClient is the default Client and is used by Put, and Options.
 // var DefaultClient = &http.Client{}
 
-// Splits a Send url into key, urlid and 'prefix' for the Send server
+// Splits a Send url into key, fileid and 'prefix' for the Send server
 // Should handle any hostname, but will brake on key & id length changes
 // e.g. https://send.firefox.com/download/c8ab3218f9/#39EL7SuqwWNYe4ISl2M06g
-// service == "https://send.firefox.com/"
-// urlid == "c8ab3218f9"
-// key == "39EL7SuqwWNYe4ISl2M06g"
-func SplitKeyURL(rawURL string) (service string, URLID string, key string) {
-	l := len(rawURL)
-	key = rawURL[l-22:]
-	URLID = rawURL[l-34 : l-24]
-	service = rawURL[:l-43]
-	return
+// baseURL == "https://send.firefox.com/"
+// fileID == "c8ab3218f9"
+// secretKey == "39EL7SuqwWNYe4ISl2M06g"
+func NewConfigFromURL(url string) (*Config, error) {
+	// TODO Validate with regex
+	l := len(url)
+
+	key := url[l-22:]
+	rawKey, err := base64.RawURLEncoding.DecodeString(key)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Config{
+		BaseURL:   url[:l-43],
+		FileID:    url[l-34 : l-24],
+		SecretKey: rawKey,
+	}
+
+	return c, nil
 }
 
 func CheckServerVersion(service string, ignoreVersion bool) (bool, error) {
@@ -213,17 +230,17 @@ func ApiPassword(service, fileID, ownerToken string, newAuthKey []byte) (bool, e
 
 // set or change the password required to download a file hosted on a send server.
 func SetPassword(url, ownerToken, password string) (bool, error) {
-	service, fileID, key := SplitKeyURL(url)
-	rawKey, err := base64.RawURLEncoding.DecodeString(key)
+	config, err := NewConfigFromURL(url)
 	if err != nil {
 		return false, err
 	}
-	mKey := NewManagedKey(rawKey, password, url)
+
+	mKey := NewManagedKey(config.SecretKey, password, url)
 	if mKey.Err() != nil {
 		return false, mKey.Err()
 	}
 
-	return ApiPassword(service, fileID, ownerToken, mKey.AuthKey)
+	return ApiPassword(config.BaseURL, config.FileID, ownerToken, mKey.AuthKey)
 }
 
 // params.go
@@ -505,16 +522,20 @@ func ApiDownload(service, fileID, fileName string, fileSize int64, authKey []byt
 	return nil
 }
 
-func DownloadFile(rawURL, password string, ignoreVersion bool) error {
-	service, fileID, key := SplitKeyURL(rawURL)
-	if status, err := CheckServerVersion(service, ignoreVersion); err != nil {
+func DownloadFile(url, password string, ignoreVersion bool) error {
+	config, err := NewConfigFromURL(url)
+	if err != nil {
+		return err
+	}
+
+	if status, err := CheckServerVersion(config.BaseURL, ignoreVersion); err != nil {
 		return err
 	} else if !status {
 		return errors.New("Potentially incompatible server version, use --ignore-version to disable version checks")
 	}
 
 	fmt.Println("Checking if file exists...")
-	info, err := ApiExists(service, fileID)
+	info, err := ApiExists(config.BaseURL, config.FileID)
 	if err != nil {
 		return err
 	}
@@ -525,24 +546,19 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
 
-	rawKey, err := base64.RawURLEncoding.DecodeString(key)
-	if err != nil {
-		return err
-	}
-
-	mKey := NewManagedKey(rawKey, password, rawURL)
+	mKey := NewManagedKey(config.SecretKey, password, url)
 	if mKey.Err() != nil {
 		return mKey.Err()
 	}
 
-	nonce, err := GetNonce(service + "download/" + fileID + "/")
+	nonce, err := GetNonce(config.BaseURL, config.FileID)
 	if err != nil {
 		return err
 	}
 
 	authorisation := mKey.SignNonce(nonce)
 	fmt.Println("Fetching metadata...")
-	meta, nonce, err := ApiMetadata(service, fileID, authorisation)
+	meta, nonce, err := ApiMetadata(config.BaseURL, config.FileID, authorisation)
 	if err != nil {
 		return err
 	}
@@ -564,9 +580,9 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 
 	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", metadata.Name, meta.Size-16)
 
-	fmt.Println("Downloading " + rawURL)
+	fmt.Println("Downloading " + url)
 	authorisation = mKey.SignNonce(nonce)
-	err = ApiDownload(service, fileID, metadata.Name, meta.Size, authorisation, mKey)
+	err = ApiDownload(config.BaseURL, config.FileID, metadata.Name, meta.Size, authorisation, mKey)
 	if err != nil {
 		return err
 	}
@@ -574,8 +590,9 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 	return nil
 }
 
-func GetNonce(url string) ([]byte, error) {
-	response, err := http.Get(url)
+func GetNonce(service, fileID string) ([]byte, error) {
+	service += "download/%s"
+	response, err := http.Head(fmt.Sprintf(service, fileID))
 
 	if err != nil {
 		return nil, err
@@ -594,6 +611,6 @@ func GetNonce(url string) ([]byte, error) {
 		log.Printf("GetNonce: Received body while processing POST request: %s\n", responseDump)
 	}
 
-	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
-	return base64.StdEncoding.DecodeString(fileNonce)
+	nonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
+	return base64.StdEncoding.DecodeString(nonce)
 }
