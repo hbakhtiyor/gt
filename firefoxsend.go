@@ -38,10 +38,9 @@ type Version struct {
 }
 
 type Token struct {
-	OwnerToken  string `json:"owner_token,omitempty"`
-	DeleteToken string `json:"delete_token,omitempty"`
-	Auth        string `json:"auth,omitempty"`
-	DLimit      int    `json:"dlimit,omitempty"`
+	OwnerToken string `json:"owner_token,omitempty"`
+	Auth       string `json:"auth,omitempty"`
+	DLimit     int    `json:"dlimit,omitempty"`
 }
 
 type Meta struct {
@@ -56,10 +55,9 @@ type FileInfo struct {
 }
 
 type SendReseponse struct {
-	ID     string `json:"id"`
-	URL    string `json:"url"`
-	Owner  string `json:"owner"`
-	Delete string `json:"delete"`
+	ID    string `json:"id"`
+	URL   string `json:"url"`
+	Owner string `json:"owner"`
 }
 
 type SecretFile struct {
@@ -126,7 +124,7 @@ func CheckServerVersion(service string, ignoreVersion bool) (bool, error) {
 // Delete a file already uploaded to Send
 func ApiDelete(service, fileID, ownerToken string) (bool, error) {
 	service += "api/delete/%s"
-	j := &Token{OwnerToken: ownerToken, DeleteToken: ownerToken}
+	j := &Token{OwnerToken: ownerToken}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return false, err
@@ -354,9 +352,6 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 		return nil, err
 	}
 	secretFile.OwnerToken = result.Owner
-	if secretFile.OwnerToken == "" {
-		secretFile.OwnerToken = result.Delete
-	}
 
 	return secretFile, nil
 }
