@@ -51,6 +51,10 @@ type Meta struct {
 	TTL           int64  `json:"ttl"`
 }
 
+type FileInfo struct {
+	PasswordRequired bool `json:"password"`
+}
+
 type SendReseponse struct {
 	ID     string `json:"id"`
 	URL    string `json:"url"`
@@ -444,6 +448,36 @@ func ApiMetadata(service, fileID string, authKey []byte) (*Meta, []byte, error) 
 	return result, newNonce, nil
 }
 
+func ApiExists(service, fileID string) (*FileInfo, error) {
+	service += "api/exists/%s"
+
+	response, err := http.Get(fmt.Sprintf(service, fileID))
+
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		if Debug {
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("ApiExists: Error occurs while processing GET request: %s\n", responseDump)
+		}
+		return nil, errors.New(response.Status)
+	}
+
+	if Debug {
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("ApiExists: Received body while processing GET request: %s\n", responseDump)
+	}
+
+	result := &FileInfo{}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // Given a Send url, download and return the encrypted data and metadata
 func ApiDownload(service, fileID, fileName string, fileSize int64, authKey []byte, key *ManagedKey) error {
 	service += "api/download/%s"
@@ -500,11 +534,15 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 		return errors.New("Potentially incompatible server version, use --ignore-version to disable version checks")
 	}
 
-	passwordRequired := false
-	//     passwordRequired := CheckForPassword(service + "download/" + fileID + "/")
-	if passwordRequired && password == "" {
+	fmt.Println("Checking if file exists...")
+	info, err := ApiExists(service, fileID)
+	if err != nil {
+		return err
+	}
+
+	if info.PasswordRequired && password == "" {
 		fmt.Scanln("A password is required, please enter it now", password)
-	} else if !passwordRequired && password != "" {
+	} else if !info.PasswordRequired && password != "" {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
 
@@ -516,13 +554,6 @@ func DownloadFile(rawURL, password string, ignoreVersion bool) error {
 	mKey := NewManagedKey(rawKey, password, rawURL)
 	if mKey.Err() != nil {
 		return mKey.Err()
-	}
-
-	fmt.Println("Checking if file exists...")
-	// passwordRequired = CheckForPassword(service + "download/" + fileID)
-
-	if password == "" && passwordRequired {
-		return errors.New("This Send url requires a password")
 	}
 
 	nonce, err := GetNonce(service + "download/" + fileID + "/")
