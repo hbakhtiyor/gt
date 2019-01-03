@@ -298,48 +298,47 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*File, error) {
 	service += "api/upload"
 
-	bodyBuf := &bytes.Buffer{}
-	bodyWriter := multipart.NewWriter(bodyBuf)
+	readBody, writeBody := io.Pipe()
 
-	fileWriter, err := bodyWriter.CreateFormFile("file", fileName)
+	form := multipart.NewWriter(writeBody)
+
+	errChan := make(chan error, 1)
+	go func() {
+		defer writeBody.Close()
+		defer readBody.Close()
+
+		part, err := form.CreateFormFile("file", fileName)
+		if err != nil {
+			errChan <- fmt.Errorf("Failed to create form file: %v", err)
+			return
+		}
+
+		// reader := bufio.NewReader(file)
+		r, err := aesgcm.NewGcmEncryptReader(file, key.EncryptKey, key.EncryptIV, nil)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if _, err = io.Copy(part, r); err != nil {
+			errChan <- err
+			return
+		}
+		errChan <- form.Close()
+	}()
+
+	req, err := http.NewRequest(http.MethodPost, service, readBody)
 	if err != nil {
-		fmt.Println("error writing to buffer")
-		return nil, err
-	}
-
-	// TODO Stream upload
-	// https://github.com/cloudfoundry-incubator/cflocal/blob/49495238fad2959061bef7a23c6b28da8734f838/remote/droplet.go#L21-L58
-	// https://stackoverflow.com/questions/39761910/how-can-you-upload-files-as-a-stream-in-go
-	// https://blog.depado.eu/post/bufferless-multipart-post-in-go
-
-	// Content-Disposition: form-data; name="data"; filename="blob"
-	// Content-Type: application/octet-stream
-
-	// reader := bufio.NewReader(file)
-	r, err := aesgcm.NewGcmEncryptReader(file, key.EncryptKey, key.EncryptIV, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = io.Copy(fileWriter, r)
-	if err != nil {
-		return nil, err
-	}
-
-	contentType := bodyWriter.FormDataContentType()
-	bodyWriter.Close()
-
-	req, err := http.NewRequest(http.MethodPost, service, bodyBuf)
-	if err != nil {
+		<-errChan
 		return nil, err
 	}
 	req.Header.Set("X-File-Metadata", base64.RawURLEncoding.EncodeToString(encMeta))
 	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.AuthKey))
-	// binary/octet-stream,  "application/octet-stream"
-	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Type", form.FormDataContentType())
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
+		<-errChan
 		return nil, err
 	}
 	defer response.Body.Close()
@@ -348,6 +347,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 			responseDump, _ := httputil.DumpResponse(response, true)
 			log.Printf("ApiUpload: Error occurs while processing POST request: %s\n", responseDump)
 		}
+		<-errChan
 		return nil, errors.New(response.Status)
 	}
 
@@ -358,12 +358,13 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 
 	result := &File{}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		<-errChan
 		return nil, err
 	}
 
 	result.URL += "#" + key.RawSecretKey()
 
-	return result, nil
+	return result, <-errChan
 }
 
 // Encrypt & Upload a file to send and return the download URL
