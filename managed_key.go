@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"io"
 
 	"golang.org/x/crypto/hkdf"
@@ -30,6 +31,10 @@ func NewManagedKey(secretKey []byte, password string, rawURL string) *ManagedKey
 		RandomEncryptIV().
 		DeriveAuthKey(password, rawURL).
 		DeriveMetaKey()
+}
+
+func (key *ManagedKey) RawSecretKey() string {
+	return base64.RawURLEncoding.EncodeToString(key.SecretKey)
 }
 
 func (key *ManagedKey) RandomSecretKey() *ManagedKey {
