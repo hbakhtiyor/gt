@@ -28,7 +28,6 @@ import (
 // {"url":"https://send.firefox.com/download/3a068d79ae/","owner":"b2c2c2235e42dae2bc43","id":"3a068d79ae"}
 
 // TODO https://send.firefox.com/api/info/fileId
-// owner_token
 // {"dlimit":1,"dtotal":0,"ttl":86398000}
 
 type Version struct {
@@ -54,17 +53,10 @@ type FileInfo struct {
 	PasswordRequired bool `json:"password"`
 }
 
-type SendReseponse struct {
+type File struct {
 	ID    string `json:"id"`
 	URL   string `json:"url"`
 	Owner string `json:"owner"`
-}
-
-type SecretFile struct {
-	SecretUrl  string
-	FileID     string
-	FileNonce  []byte
-	OwnerToken string
 }
 
 // DefaultClient is the default Client and is used by Put, and Options.
@@ -285,7 +277,7 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 }
 
 // Uploads data to Send.
-func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*SecretFile, error) {
+func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*File, error) {
 	service += "api/upload"
 
 	bodyBuf := &bytes.Buffer{}
@@ -338,26 +330,18 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 		log.Printf("ApiUpload: Received body while processing POST request: %s\n", responseDump)
 	}
 
-	result := &SendReseponse{}
+	result := &File{}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return nil, err
 	}
 
-	secretFile := &SecretFile{}
-	secretFile.SecretUrl = result.URL + "#" + base64.RawURLEncoding.EncodeToString(key.SecretKey)
-	secretFile.FileID = result.ID
-	fileNonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
-	secretFile.FileNonce, err = base64.StdEncoding.DecodeString(fileNonce)
-	if err != nil {
-		return nil, err
-	}
-	secretFile.OwnerToken = result.Owner
+	result.URL += "#" + base64.RawURLEncoding.EncodeToString(key.SecretKey)
 
-	return secretFile, nil
+	return result, nil
 }
 
 // Encrypt & Upload a file to send and return the download URL
-func SendFile(service string, file *os.File, fileName, password string, ignoreVersion bool) (*SecretFile, error) {
+func SendFile(service string, file *os.File, fileName, password string, ignoreVersion bool) (*File, error) {
 	if status, err := CheckServerVersion(service, ignoreVersion); err != nil {
 		return nil, err
 	} else if !status {
@@ -392,7 +376,7 @@ func SendFile(service string, file *os.File, fileName, password string, ignoreVe
 
 	if password != "" {
 		fmt.Println("Setting password")
-		status, err := SetPassword(r.SecretUrl, r.OwnerToken, password)
+		status, err := SetPassword(r.URL, r.Owner, password)
 		if err != nil {
 			return nil, err
 		}
