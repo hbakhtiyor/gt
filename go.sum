@@ -2,3 +2,7 @@ github.com/hbakhtiyor/grab v2.0.0+incompatible h1:x+dQSWKjhMnTYNCLPd8XrVl1vM4reh
 github.com/hbakhtiyor/grab v2.0.0+incompatible/go.mod h1:ao2v+w1+nllsyI3767z+4afD0KjODm0mx6pipvBigvs=
 github.com/hbakhtiyor/grab v2.0.1-0.20181222132738-723061bb4300+incompatible h1:yQ02d4XHEUFFMYja/BPGNNVqMVGYrV5cecWskcW71LM=
 github.com/hbakhtiyor/grab v2.0.1-0.20181222132738-723061bb4300+incompatible/go.mod h1:ao2v+w1+nllsyI3767z+4afD0KjODm0mx6pipvBigvs=
+github.com/hbakhtiyor/openssl_gcm v0.0.0-20190101053512-34a1fd3e57c1 h1:d69hM+UkJ52TTqPLIPufKCzmyhZrjGOzPBDqFbNmLQ4=
+github.com/hbakhtiyor/openssl_gcm v0.0.0-20190101053512-34a1fd3e57c1/go.mod h1:BzTYDqsg+ACIWnauO4pUJbMFUid9GLEK+ejbstrFBi0=
+golang.org/x/crypto v0.0.0-20190102171810-8d7daa0c54b3 h1:35ZwriXqdZtBGoFgUpW71Z7xz5o23fRpWHFAO2PlnIA=
+golang.org/x/crypto v0.0.0-20190102171810-8d7daa0c54b3/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=

@@ -20,16 +20,6 @@ import (
 	aesgcm "github.com/hbakhtiyor/openssl_gcm"
 )
 
-// https://github.com/euphoria-io/heim/blob/097b7da2e0b23e9c5828c0e4831a3de660bb5302/proto/security/aesgcm.go
-// https://github.com/mozilla/send/blob/93072c0c1e252efc17c9a52b900a52f0c35489d0/docs/encryption.md
-
-// Content-Disposition: form-data; name="data"; filename="blob"
-// Content-Type: application/octet-stream
-// {"url":"https://send.firefox.com/download/3a068d79ae/","owner":"b2c2c2235e42dae2bc43","id":"3a068d79ae"}
-
-// TODO https://send.firefox.com/api/info/fileId
-// {"dlimit":1,"dtotal":0,"ttl":86398000}
-
 type Version struct {
 	Version string
 	Commit  string
@@ -37,9 +27,9 @@ type Version struct {
 }
 
 type Token struct {
-	OwnerToken string `json:"owner_token,omitempty"`
-	Auth       string `json:"auth,omitempty"`
-	DLimit     int    `json:"dlimit,omitempty"`
+	OwnerToken    string `json:"owner_token,omitempty"`
+	Auth          string `json:"auth,omitempty"`
+	DownloadLimit int    `json:"dlimit,omitempty"`
 }
 
 type Meta struct {
@@ -51,7 +41,10 @@ type Meta struct {
 }
 
 type FileInfo struct {
-	PasswordRequired bool `json:"password"`
+	PasswordRequired bool  `json:"password,omitempty"`
+	DownloadLimit    int   `json:"dlimit,omitempty"`
+	DownloadTotal    int   `json:"dtotal,omitempty"`
+	TTL              int64 `json:"ttl,omitempty"`
 }
 
 type File struct {
@@ -88,7 +81,7 @@ func NewConfigFromURL(url string) (*Config, error) {
 	key := url[l-22:]
 	rawKey, err := base64.RawURLEncoding.DecodeString(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Failed to decode a key: %v", err)
 	}
 
 	c := &Config{
@@ -256,7 +249,7 @@ func SetPassword(url, ownerToken, password string) (bool, error) {
 // Change the download limit for a file hosted on a Send Server
 func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, error) {
 	service += "api/params/%s"
-	j := &Token{OwnerToken: ownerToken, DLimit: downloadLimit}
+	j := &Token{OwnerToken: ownerToken, DownloadLimit: downloadLimit}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return false, err
@@ -315,6 +308,13 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 	}
 
 	// TODO Stream upload
+	// https://github.com/cloudfoundry-incubator/cflocal/blob/49495238fad2959061bef7a23c6b28da8734f838/remote/droplet.go#L21-L58
+	// https://stackoverflow.com/questions/39761910/how-can-you-upload-files-as-a-stream-in-go
+	// https://blog.depado.eu/post/bufferless-multipart-post-in-go
+
+	// Content-Disposition: form-data; name="data"; filename="blob"
+	// Content-Type: application/octet-stream
+
 	// reader := bufio.NewReader(file)
 	r, err := aesgcm.NewGcmEncryptReader(file, key.EncryptKey, key.EncryptIV, nil)
 	if err != nil {
@@ -383,7 +383,6 @@ func SendFile(file *os.File, config *Config, options *Options) (*File, error) {
 
 	fileName := filepath.Base(file.Name())
 
-	fmt.Printf("Encrypting data from \"%s\"\n", fileName)
 	key := NewManagedKey(nil, "", "")
 	if key.Err() != nil {
 		return nil, key.Err()
@@ -477,6 +476,34 @@ func ApiExists(config *Config) (*FileInfo, error) {
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
 		log.Printf("ApiExists: Received body while processing GET request: %s\n", responseDump)
+	}
+
+	result := &FileInfo{}
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func ApiInfo(config *Config) (*FileInfo, error) {
+	response, err := http.Get(fmt.Sprintf(config.BaseURL+"api/info/%s", config.FileID))
+
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode > 299 {
+		if Debug {
+			responseDump, _ := httputil.DumpResponse(response, true)
+			log.Printf("ApiInfo: Error occurs while processing GET request: %s\n", responseDump)
+		}
+		return nil, errors.New(response.Status)
+	}
+
+	if Debug {
+		responseDump, _ := httputil.DumpResponse(response, true)
+		log.Printf("ApiInfo: Received body while processing GET request: %s\n", responseDump)
 	}
 
 	result := &FileInfo{}
