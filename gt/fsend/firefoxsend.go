@@ -1,4 +1,4 @@
-package main
+package fsend
 
 import (
 	"bufio"
@@ -18,6 +18,10 @@ import (
 	"strings"
 
 	aesgcm "github.com/hbakhtiyor/openssl_gcm"
+)
+
+const (
+	Debug = false
 )
 
 type Version struct {
@@ -66,7 +70,7 @@ type Options struct {
 }
 
 // DefaultClient is the default Client and is used by Put, and Options.
-// var DefaultClient = &http.Client{}
+var DefaultClient = &http.Client{}
 
 // Splits a Send url into key, fileid and 'prefix' for the Send server
 // Should handle any hostname, but will brake on key & id length changes

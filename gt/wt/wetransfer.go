@@ -5,7 +5,7 @@
 // It exposes `download' and `upload' subcommands, respectively used to download
 // files from a `we.tl' or `wetransfer.com/downloads' URLs and upload files that
 // will be shared via emails or link.
-package main
+package wt
 
 import (
 	"bufio"

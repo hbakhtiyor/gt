@@ -1,4 +1,4 @@
-package main
+package fsend
 
 import (
 	"crypto/hmac"
