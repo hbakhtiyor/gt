@@ -12,7 +12,7 @@ import (
 )
 
 // Delete a file already uploaded to Send
-func Delete(service, fileID, ownerToken string) (bool, error) {
+func Delete(ownerToken string) (bool, error) {
 	j := &Token{OwnerToken: ownerToken}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
@@ -24,7 +24,7 @@ func Delete(service, fileID, ownerToken string) (bool, error) {
 	}
 
 	response, err := http.Post(
-		fmt.Sprintf(service+"api/delete/%s", fileID),
+		fmt.Sprintf(config.BaseURL+"api/delete/%s", config.FileID),
 		"application/json; charset=utf-8",
 		b,
 	)

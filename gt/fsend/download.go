@@ -16,15 +16,13 @@ import (
 )
 
 // Given a Send url, download and return the encrypted data and metadata
-func ApiDownload(service, fileID, fileName string, fileSize int64, authKey []byte, key *ManagedKey) error {
-	service += "api/download/%s"
-
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(service, fileID), nil)
+func Download(meta *Meta, key *ManagedKey) error {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(config.BaseURL+"api/download/%s", config.FileID), nil)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(authKey))
+	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(meta.Nonce)))
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
@@ -34,24 +32,24 @@ func ApiDownload(service, fileID, fileName string, fileSize int64, authKey []byt
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("ApiDownload: Error occurs while processing POST request: %s\n", responseDump)
+			log.Printf("Download: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		return errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("ApiDownload: Received body while processing POST request: %s\n", responseDump)
+		log.Printf("Download: Received body while processing POST request: %s\n", responseDump)
 	}
 
 	reader := bufio.NewReader(response.Body)
 	// https://www.w3.org/TR/WebCryptoAPI/#aes-gcm-operations
-	r, err := aesgcm.NewGcmDecryptReader(reader, key.EncryptKey, key.EncryptIV, nil, fileSize)
+	r, err := aesgcm.NewGcmDecryptReader(reader, key.EncryptKey, key.EncryptIV, nil, meta.Size)
 	if err != nil {
 		return err
 	}
 
-	file, err := os.Create(fileName)
+	file, err := os.Create(meta.MetaData.Name)
 	if err != nil {
 		return err
 	}
@@ -72,20 +70,18 @@ func DownloadFile(url string, options *Options) error {
 		options = &Options{}
 	}
 
-	if status, err := CheckServerVersion(config, options); err != nil {
+	if status, err := CheckVersion(options.IgnoreVersion); err != nil {
 		return err
 	} else if !status {
 		return errors.New("Potentially incompatible server version, use --ignore-version to disable version checks")
 	}
 
 	fmt.Println("Checking if file exists...")
-	info, err := ApiExists(config)
-	if err != nil {
-		return err
-	}
 
-	if info.PasswordRequired && options.Password == "" {
-		fmt.Scanln("A password is required, please enter it now", options.Password)
+	if info, err := Exists(); err != nil {
+		return err
+	} else if info.PasswordRequired && options.Password == "" {
+		fmt.Scanln("A password is required, please enter it now", &options.Password)
 	} else if !info.PasswordRequired && options.Password != "" {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
@@ -95,38 +91,26 @@ func DownloadFile(url string, options *Options) error {
 		return mKey.Err()
 	}
 
-	nonce, err := GetNonce(config)
+	nonce, err := GetNonce()
 	if err != nil {
 		return err
 	}
 
-	authorisation := mKey.SignNonce(nonce)
 	fmt.Println("Fetching metadata...")
-	meta, err := ApiMetadata(config.BaseURL, config.FileID, authorisation)
+	meta, err := GetMetadata(nonce, mKey)
 	if err != nil {
 		return err
 	}
 
-	encMeta, err := base64.RawURLEncoding.DecodeString(meta.MetaData)
+	mKey.EncryptIV, err = base64.RawURLEncoding.DecodeString(meta.MetaData.IV)
 	if err != nil {
 		return err
 	}
 
-	metadata, err := DecryptMetadata(encMeta, mKey)
-	if err != nil {
-		return err
-	}
-
-	mKey.EncryptIV, err = base64.RawURLEncoding.DecodeString(metadata.IV)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", metadata.Name, meta.Size-16)
+	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", meta.MetaData.Name, meta.Size-16)
 
 	fmt.Println("Downloading " + config.RawURL)
-	authorisation = mKey.SignNonce(meta.Nonce)
-	err = ApiDownload(config.BaseURL, config.FileID, metadata.Name, meta.Size, authorisation, mKey)
+	err = Download(meta, mKey)
 	if err != nil {
 		return err
 	}
@@ -134,7 +118,7 @@ func DownloadFile(url string, options *Options) error {
 	return nil
 }
 
-func GetNonce(config *Config) ([]byte, error) {
+func GetNonce() ([]byte, error) {
 	response, err := http.Head(fmt.Sprintf(config.BaseURL+"download/%s", config.FileID))
 
 	if err != nil {

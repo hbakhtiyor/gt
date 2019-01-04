@@ -59,7 +59,7 @@ func Run() {
 
 	// Files to upload
 	if len(filePaths) > 0 {
-		result, err := wt.UploadFile(filePaths, fileNames, *messageFlag, *fromFlag, strings.Split(*toFlag, ","), *limitParallelFlag)
+		result, err := wt.UploadFiles(filePaths, fileNames, *messageFlag, *fromFlag, strings.Split(*toFlag, ","), *limitParallelFlag)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
 			os.Exit(1)

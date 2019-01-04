@@ -23,8 +23,18 @@ type File struct {
 }
 
 // Uploads data to Send.
-func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, fileName string) (*File, error) {
-	service += "api/upload"
+func Upload(file *os.File, key *ManagedKey) (*File, error) {
+	fileName := filepath.Base(file.Name())
+
+	metadata := &MetaData{
+		Name: fileName,
+		Type: "application/octet-stream",
+	}
+
+	encMeta, err := metadata.Encrypt(key)
+	if err != nil {
+		return nil, err
+	}
 
 	readBody, writeBody := io.Pipe()
 	defer readBody.Close()
@@ -40,7 +50,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 			errChan <- fmt.Errorf("Failed to create form file: %v", err)
 			return
 		}
-
+		// TODO
 		// reader := bufio.NewReader(file)
 		r, err := aesgcm.NewGcmEncryptReader(file, key.EncryptKey, key.EncryptIV, nil)
 		if err != nil {
@@ -55,7 +65,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 		errChan <- form.Close()
 	}()
 
-	req, err := http.NewRequest(http.MethodPost, service, readBody)
+	req, err := http.NewRequest(http.MethodPost, config.BaseURL+"api/upload", readBody)
 	if err != nil {
 		<-errChan
 		return nil, err
@@ -73,7 +83,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("ApiUpload: Error occurs while processing POST request: %s\n", responseDump)
+			log.Printf("Upload: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		<-errChan
 		return nil, errors.New(response.Status)
@@ -81,7 +91,7 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("ApiUpload: Received body while processing POST request: %s\n", responseDump)
+		log.Printf("Upload: Received body while processing POST request: %s\n", responseDump)
 	}
 
 	result := &File{}
@@ -96,15 +106,15 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 }
 
 // Encrypt & Upload a file to send and return the download URL
-func SendFile(file *os.File, config *Config, options *Options) (*File, error) {
-	if config == nil {
-		config = &Config{BaseURL: "https://send.firefox.com/"}
+func UploadFile(file *os.File, cfg *Config, options *Options) (*File, error) {
+	if cfg != nil {
+		config = cfg
 	}
 	if options == nil {
 		options = &Options{}
 	}
 
-	if status, err := CheckServerVersion(config, options); err != nil {
+	if status, err := CheckVersion(options.IgnoreVersion); err != nil {
 		return nil, err
 	} else if !status {
 		fmt.Println("\033[1;41m!!! Potentially incompatible server version !!!\033[0m")
@@ -117,29 +127,32 @@ func SendFile(file *os.File, config *Config, options *Options) (*File, error) {
 		return nil, key.Err()
 	}
 
-	metadata := &MetaData{
-		Name: fileName,
-		Type: "application/octet-stream",
-	}
-
-	encMeta, err := metadata.Encrypt(key)
-	if err != nil {
-		return nil, err
-	}
-
 	fmt.Printf("Uploading \"%s\"\n", fileName)
-	r, err := ApiUpload(config.BaseURL, file, encMeta, key, fileName)
+	r, err := Upload(file, key)
 	if err != nil {
 		return nil, err
 	}
 
 	if options.Password != "" {
 		fmt.Println("Setting password")
-		status, err := SetPassword(r.URL, r.Owner, options.Password)
-		if err != nil {
+		if status, err := SetPassword(r.URL, r.Owner, options.Password); err != nil {
 			return nil, err
+		} else if status {
+			fmt.Println("Successfully to set password")
+		} else {
+			fmt.Println("Failed to set password")
 		}
-		fmt.Println(status)
+	}
+
+	if options.DownloadLimit != 0 {
+		fmt.Println("Setting params")
+		if status, err := SetParams(r.Owner, options.DownloadLimit); err != nil {
+			return nil, err
+		} else if status {
+			fmt.Println("Successfully to set params")
+		} else {
+			fmt.Println("Failed to set params")
+		}
 	}
 
 	return r, nil

@@ -12,8 +12,7 @@ import (
 )
 
 // Change the download limit for a file hosted on a Send Server
-func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, error) {
-	service += "api/params/%s"
+func SetParams(ownerToken string, downloadLimit int) (bool, error) {
 	j := &Token{OwnerToken: ownerToken, DownloadLimit: downloadLimit}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
@@ -21,11 +20,11 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 	}
 
 	if Debug {
-		log.Printf("ApiParams: Generated json data: %s\n", b.String())
+		log.Printf("SetParams: Generated json data: %s\n", b.String())
 	}
 
 	response, err := http.Post(
-		fmt.Sprintf(service, fileID),
+		fmt.Sprintf(config.BaseURL+"api/params/%s", config.FileID),
 		"application/json; charset=utf-8",
 		b,
 	)
@@ -37,14 +36,14 @@ func ApiParams(service, fileID, ownerToken string, downloadLimit int) (bool, err
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("ApiParams: Error occurs while processing POST request: %s\n", responseDump)
+			log.Printf("SetParams: Error occurs while processing POST request: %s\n", responseDump)
 		}
 		return false, errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("ApiParams: Received body while processing POST request: %s\n", responseDump)
+		log.Printf("SetParams: Received body while processing POST request: %s\n", responseDump)
 	}
 
 	result, err := ioutil.ReadAll(response.Body)

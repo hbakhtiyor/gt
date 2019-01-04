@@ -14,36 +14,47 @@ type Version struct {
 	Source  string
 }
 
-func CheckServerVersion(config *Config, option *Options) (bool, error) {
-	if option.IgnoreVersion {
-		return true, nil
-	}
+var currentVersion = &Version{
+	Version: "v2.6.1",
+	Commit:  "7013f5c",
+}
 
+func GetVersion() (*Version, error) {
 	response, err := http.Get(config.BaseURL + "__version__")
 
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("CheckServerVersion: Error occurs while processing POST request: %s %s\n", config.BaseURL, responseDump)
+			log.Printf("GetVersion: Error occurs while processing POST request: %s %s\n", config.BaseURL, responseDump)
 		}
-		return false, errors.New(response.Status)
+		return nil, errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("CheckServerVersion: Received body while processing POST request: %s %s\n", config.BaseURL, responseDump)
+		log.Printf("GetVersion: Received body while processing POST request: %s %s\n", config.BaseURL, responseDump)
 	}
 
 	result := &Version{}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return false, err
+		return nil, err
 	}
 
-	if result.Version == "v2.6.1" && result.Commit == "7013f5c" {
+	return result, nil
+}
+
+func CheckVersion(ignoreVersion bool) (bool, error) {
+	if ignoreVersion {
+		return true, nil
+	}
+
+	if version, err := GetVersion(); err != nil {
+		return false, err
+	} else if version.Version == currentVersion.Version && version.Commit == currentVersion.Commit {
 		return true, nil
 	}
 

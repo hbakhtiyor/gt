@@ -16,7 +16,7 @@ type FileInfo struct {
 	TTL              int64 `json:"ttl,omitempty"`
 }
 
-func ApiInfo(config *Config) (*FileInfo, error) {
+func GetInfo() (*FileInfo, error) {
 	response, err := http.Get(fmt.Sprintf(config.BaseURL+"api/info/%s", config.FileID))
 
 	if err != nil {
@@ -26,14 +26,14 @@ func ApiInfo(config *Config) (*FileInfo, error) {
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("ApiInfo: Error occurs while processing GET request: %s\n", responseDump)
+			log.Printf("GetInfo: Error occurs while processing GET request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("ApiInfo: Received body while processing GET request: %s\n", responseDump)
+		log.Printf("GetInfo: Received body while processing GET request: %s\n", responseDump)
 	}
 
 	result := &FileInfo{}
@@ -44,7 +44,7 @@ func ApiInfo(config *Config) (*FileInfo, error) {
 	return result, nil
 }
 
-func ApiExists(config *Config) (*FileInfo, error) {
+func Exists() (*FileInfo, error) {
 	response, err := http.Get(fmt.Sprintf(config.BaseURL+"api/exists/%s", config.FileID))
 
 	if err != nil {
@@ -54,14 +54,14 @@ func ApiExists(config *Config) (*FileInfo, error) {
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		if Debug {
 			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("ApiExists: Error occurs while processing GET request: %s\n", responseDump)
+			log.Printf("Exists: Error occurs while processing GET request: %s\n", responseDump)
 		}
 		return nil, errors.New(response.Status)
 	}
 
 	if Debug {
 		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("ApiExists: Received body while processing GET request: %s\n", responseDump)
+		log.Printf("Exists: Received body while processing GET request: %s\n", responseDump)
 	}
 
 	result := &FileInfo{}

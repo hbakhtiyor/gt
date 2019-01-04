@@ -26,10 +26,12 @@ type Config struct {
 type Options struct {
 	Password      string
 	IgnoreVersion bool
+	DownloadLimit int
 }
 
 // DefaultClient is the default Client and is used by Put, and Options.
 var DefaultClient = &http.Client{}
+var config = BuildDefaultConfig()
 
 // Splits a Send url into key, fileid and 'prefix' for the Send server
 // Should handle any hostname, but will brake on key & id length changes
@@ -55,4 +57,8 @@ func NewConfigFromURL(url string) (*Config, error) {
 	}
 
 	return c, nil
+}
+
+func BuildDefaultConfig() *Config {
+	return &Config{BaseURL: "https://send.firefox.com/"}
 }
