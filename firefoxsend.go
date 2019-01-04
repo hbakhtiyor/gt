@@ -299,13 +299,13 @@ func ApiUpload(service string, file *os.File, encMeta []byte, key *ManagedKey, f
 	service += "api/upload"
 
 	readBody, writeBody := io.Pipe()
+	defer readBody.Close()
 
 	form := multipart.NewWriter(writeBody)
 
 	errChan := make(chan error, 1)
 	go func() {
 		defer writeBody.Close()
-		defer readBody.Close()
 
 		part, err := form.CreateFormFile("file", fileName)
 		if err != nil {
