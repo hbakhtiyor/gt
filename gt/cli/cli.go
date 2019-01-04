@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hbakhtiyor/grab"
+	"github.com/hbakhtiyor/gt/gt/fsend"
 	"github.com/hbakhtiyor/gt/gt/utils"
 	"github.com/hbakhtiyor/gt/gt/wt"
 )
@@ -21,24 +22,60 @@ var (
 	succeeded  = 0
 )
 
+var programName string
+
 func Run() {
 	// Download/upload files via wetransfer.com, send.firefox.com
-	programName := os.Args[0]
-	messageFlag := flag.String("m", "", "Message description for the transfer.")
-	fromFlag := flag.String("f", "", "Sender email.")
-	toFlag := flag.String("t", "", "Recipient emails. Separate with comma(,)")
-	printFlag := flag.Bool("p", false, "Only print the direct link (without downloading it)")
-	limitParallelFlag := flag.Int("l", runtime.NumCPU(), "Parallel limit for uploading/downloading files")
+	programName = os.Args[0]
+	fsCommand := flag.NewFlagSet("fs", flag.ExitOnError)
+	wtCommand := flag.NewFlagSet("wt", flag.ExitOnError)
+
+	messageFlag := wtCommand.String("m", "", "Message description for the transfer.")
+	fromFlag := wtCommand.String("f", "", "Sender email.")
+	toFlag := wtCommand.String("t", "", "Recipient emails. Separate with comma(,)")
+	printFlag := wtCommand.Bool("p", false, "Only print the direct link (without downloading it)")
+	limitParallelFlag := wtCommand.Int("l", runtime.NumCPU(), "Parallel limit for uploading/downloading files")
+
+	passwordFlag := fsCommand.String("pwd", "", "Set password to the file.")
+	downloadLimitFlag := fsCommand.Int("dl", 0, "Set download limit of the file.")
 
 	flag.Parse()
 
 	if flag.NArg() < 1 {
-		fmt.Printf("Usage: %s [file] ... [url] ...\n", programName)
+		fmt.Printf("Usage: %s [command] [file] ... [url] ...\n", programName)
+		fmt.Printf("The most commonly used %s commands are:\n", programName)
+		fmt.Println(" fs  Upload files via Firefox Send")
+		fmt.Println(" wt  Upload files via WeTransfer")
 		flag.PrintDefaults()
 		return
 	}
 
-	filePaths, fileNames, rawURLs := getResources(flag.Args())
+	args := flag.Args()
+	options := &fsend.Options{Password: *passwordFlag, DownloadLimit: *downloadLimitFlag}
+
+	switch os.Args[1] {
+	case "wt":
+		wtCommand.Parse(os.Args[2:])
+		if wtCommand.NArg() < 1 {
+			fmt.Printf("Usage: %s wt [file] ... [url] ...\n", programName)
+			wtCommand.PrintDefaults()
+			return
+		}
+		args = wtCommand.Args()
+	case "fs":
+		fsCommand.Parse(os.Args[2:])
+		if fsCommand.NArg() < 1 {
+			fmt.Printf("Usage: %s fs [file] ... [url] ...\n", programName)
+			fsCommand.PrintDefaults()
+			return
+		}
+		args = fsCommand.Args()
+	default:
+		fmt.Printf("%q is not valid command.\n", os.Args[1])
+		os.Exit(2)
+	}
+
+	filePaths, fileNames, rawURLs := getResources(args)
 
 	if len(filePaths) == 0 && len(rawURLs) == 0 {
 		fmt.Printf("%s: %s\n", programName, "There are no file(s)/url(s) to upload/download")
@@ -46,28 +83,47 @@ func Run() {
 
 	// Files to download
 	if len(rawURLs) > 0 {
-		if *printFlag {
-			fmt.Println(getDownloadLinks(rawURLs))
-		} else {
-			err := downloadFiles(rawURLs, *limitParallelFlag)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
-				os.Exit(1)
+		if wtCommand.Parsed() {
+			if *printFlag {
+				fmt.Println(getDownloadLinks(rawURLs))
+			} else {
+				err := downloadFiles(rawURLs, *limitParallelFlag)
+				checkError(err)
+			}
+		} else if fsCommand.Parsed() {
+			for _, rawURL := range rawURLs {
+				if err := fsend.DownloadFile(rawURL, options); err != nil {
+					fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+				}
 			}
 		}
 	}
 
 	// Files to upload
 	if len(filePaths) > 0 {
-		result, err := wt.UploadFiles(filePaths, fileNames, *messageFlag, *fromFlag, strings.Split(*toFlag, ","), *limitParallelFlag)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
-			os.Exit(1)
-		}
+		if wtCommand.Parsed() {
+			result, err := wt.UploadFiles(filePaths, fileNames, *messageFlag, *fromFlag, strings.Split(*toFlag, ","), *limitParallelFlag)
+			checkError(err)
 
-		// TODO [Copied to clipboard]
-		// https://github.com/atotto/clipboard ?
-		fmt.Printf("\n%s: %v\n", programName, result.ShortenedURL)
+			// TODO [Copied to clipboard]
+			// https://github.com/atotto/clipboard ?
+			fmt.Printf("\n%s: %v\n", programName, result.ShortenedURL)
+		} else if fsCommand.Parsed() {
+			for _, filePath := range filePaths {
+				result, err := fsend.UploadFile(filePath, nil, options)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+				}
+				fmt.Printf("%s\n", result.URL)
+			}
+		}
+	}
+}
+
+func checkError(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+		os.Exit(1)
 	}
 }
 

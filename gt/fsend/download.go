@@ -62,10 +62,11 @@ func Download(meta *Meta, key *ManagedKey) error {
 }
 
 func DownloadFile(url string, options *Options) error {
-	config, err := NewConfigFromURL(url)
+	cfg, err := NewConfigFromURL(url)
 	if err != nil {
 		return err
 	}
+	config = cfg
 	if options == nil {
 		options = &Options{}
 	}

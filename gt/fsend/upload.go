@@ -106,7 +106,12 @@ func Upload(file *os.File, key *ManagedKey) (*File, error) {
 }
 
 // Encrypt & Upload a file to send and return the download URL
-func UploadFile(file *os.File, cfg *Config, options *Options) (*File, error) {
+func UploadFile(filePath string, cfg *Config, options *Options) (*File, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+
 	if cfg != nil {
 		config = cfg
 	}
