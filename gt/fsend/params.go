@@ -12,8 +12,8 @@ import (
 )
 
 // Change the download limit for a file hosted on a Send Server
-func SetParams(ownerToken string, downloadLimit int) (bool, error) {
-	j := &Token{OwnerToken: ownerToken, DownloadLimit: downloadLimit}
+func SetParams(fileInfo *FileInfo) (bool, error) {
+	j := &Token{OwnerToken: fileInfo.Owner, DownloadLimit: fileInfo.DownloadLimit}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return false, err
@@ -24,7 +24,7 @@ func SetParams(ownerToken string, downloadLimit int) (bool, error) {
 	}
 
 	response, err := http.Post(
-		fmt.Sprintf(config.BaseURL+"api/params/%s", config.FileID),
+		fmt.Sprintf(fileInfo.BaseURL+"api/params/%s", fileInfo.FileID),
 		"application/json; charset=utf-8",
 		b,
 	)

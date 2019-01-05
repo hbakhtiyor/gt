@@ -13,19 +13,14 @@ import (
 )
 
 // set or change the password required to download a file hosted on a send server.
-func SetPassword(url, ownerToken, password string) (bool, error) {
-	config, err := NewConfigFromURL(url)
-	if err != nil {
-		return false, err
-	}
-
-	mKey := NewManagedKey(config.SecretKey, password, url)
+func SetPassword(fileInfo *FileInfo) (bool, error) {
+	mKey := NewManagedKey(fileInfo)
 	if mKey.Err() != nil {
 		return false, mKey.Err()
 	}
 
 	auth := base64.RawURLEncoding.EncodeToString(mKey.AuthKey)
-	j := &Token{OwnerToken: ownerToken, Auth: auth}
+	j := &Token{OwnerToken: fileInfo.Owner, Auth: auth}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return false, err
@@ -36,7 +31,7 @@ func SetPassword(url, ownerToken, password string) (bool, error) {
 	}
 
 	response, err := http.Post(
-		fmt.Sprintf(config.BaseURL+"api/password/%s", config.FileID),
+		fmt.Sprintf(fileInfo.BaseURL+"api/password/%s", fileInfo.FileID),
 		"application/json; charset=utf-8",
 		b,
 	)

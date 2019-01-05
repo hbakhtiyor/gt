@@ -19,13 +19,13 @@ type Meta struct {
 	MetaData      *MetaData
 }
 
-func GetMetadata(nonce []byte, key *ManagedKey) (*Meta, error) {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(config.BaseURL+"api/metadata/%s", config.FileID), nil)
+func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(fileInfo.BaseURL+"api/metadata/%s", fileInfo.FileID), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(nonce)))
+	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(fileInfo.Nonce)))
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {

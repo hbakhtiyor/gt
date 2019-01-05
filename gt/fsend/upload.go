@@ -23,11 +23,9 @@ type File struct {
 }
 
 // Uploads data to Send.
-func Upload(file *os.File, key *ManagedKey) (*File, error) {
-	fileName := filepath.Base(file.Name())
-
+func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 	metadata := &MetaData{
-		Name: fileName,
+		Name: fileInfo.Name,
 		Type: "application/octet-stream",
 	}
 
@@ -45,7 +43,7 @@ func Upload(file *os.File, key *ManagedKey) (*File, error) {
 	go func() {
 		defer writeBody.Close()
 
-		part, err := form.CreateFormFile("file", fileName)
+		part, err := form.CreateFormFile("file", fileInfo.Name)
 		if err != nil {
 			errChan <- fmt.Errorf("Failed to create form file: %v", err)
 			return
@@ -65,7 +63,7 @@ func Upload(file *os.File, key *ManagedKey) (*File, error) {
 		errChan <- form.Close()
 	}()
 
-	req, err := http.NewRequest(http.MethodPost, config.BaseURL+"api/upload", readBody)
+	req, err := http.NewRequest(http.MethodPost, fileInfo.BaseURL+"api/upload", readBody)
 	if err != nil {
 		<-errChan
 		return nil, err
@@ -106,20 +104,27 @@ func Upload(file *os.File, key *ManagedKey) (*File, error) {
 }
 
 // Encrypt & Upload a file to send and return the download URL
-func UploadFile(filePath string, cfg *Config, options *Options) (*File, error) {
+func UploadFile(filePath string, fileInfo *FileInfo, ignoreVersion bool) (*File, error) {
+	if fileInfo == nil {
+		fileInfo = &FileInfo{BaseURL: DefaultBaseURL}
+	} else if fileInfo.BaseURL == "" {
+		fileInfo.BaseURL = DefaultBaseURL
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
-
-	if cfg != nil {
-		config = cfg
+	stat, err := os.Stat(filePath)
+	if err != nil {
+		return nil, err
 	}
-	if options == nil {
-		options = &Options{}
+	fileInfo.Size = stat.Size()
+	if err := fileInfo.CheckRequirements(); err != nil {
+		return nil, err
 	}
 
-	if status, err := CheckVersion(options.IgnoreVersion); err != nil {
+	if status, err := CheckVersion(fileInfo, ignoreVersion); err != nil {
 		return nil, err
 	} else if !status {
 		fmt.Println("\033[1;41m!!! Potentially incompatible server version !!!\033[0m")
@@ -127,20 +132,24 @@ func UploadFile(filePath string, cfg *Config, options *Options) (*File, error) {
 
 	fileName := filepath.Base(file.Name())
 
-	key := NewManagedKey(nil, "", "")
+	key := NewManagedKey(nil)
 	if key.Err() != nil {
 		return nil, key.Err()
 	}
 
+	fileInfo.Name = fileName
 	fmt.Printf("Uploading \"%s\"\n", fileName)
-	r, err := Upload(file, key)
+	r, err := Upload(file, fileInfo, key)
 	if err != nil {
 		return nil, err
 	}
 
-	if options.Password != "" {
+	fileInfo.Owner = r.Owner
+	fileInfo.ParseURL(r.URL)
+
+	if fileInfo.Password != "" {
 		fmt.Println("Setting password")
-		if status, err := SetPassword(r.URL, r.Owner, options.Password); err != nil {
+		if status, err := SetPassword(fileInfo); err != nil {
 			return nil, err
 		} else if status {
 			fmt.Println("Successfully to set password")
@@ -149,9 +158,9 @@ func UploadFile(filePath string, cfg *Config, options *Options) (*File, error) {
 		}
 	}
 
-	if options.DownloadLimit != 0 {
+	if fileInfo.DownloadLimit != 0 {
 		fmt.Println("Setting params")
-		if status, err := SetParams(r.Owner, options.DownloadLimit); err != nil {
+		if status, err := SetParams(fileInfo); err != nil {
 			return nil, err
 		} else if status {
 			fmt.Println("Successfully to set params")

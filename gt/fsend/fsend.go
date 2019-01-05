@@ -17,23 +17,25 @@ type Token struct {
 	DownloadLimit int    `json:"dlimit,omitempty"`
 }
 
-type Config struct {
-	BaseURL   string
-	FileID    string
-	SecretKey []byte
-	RawURL    string
-}
-
-// TODO FileInfo
-type Options struct {
-	Password      string
-	IgnoreVersion bool
-	DownloadLimit int
+type FileInfo struct {
+	BaseURL          string
+	FileID           string
+	SecretKey        []byte
+	RawURL           string
+	Password         string
+	Name             string
+	Size             int64
+	Nonce            []byte
+	Owner            string
+	PasswordRequired bool  `json:"password,omitempty"`
+	DownloadLimit    int   `json:"dlimit,omitempty"`
+	DownloadTotal    int   `json:"dtotal,omitempty"`
+	TTL              int64 `json:"ttl,omitempty"`
 }
 
 // DefaultClient is the default Client and is used by Put, and Options.
 var DefaultClient = &http.Client{}
-var config = BuildDefaultConfig()
+var DefaultBaseURL = "https://send.firefox.com/"
 
 // Splits a Send url into key, fileid and 'prefix' for the Send server
 // Should handle any hostname, but will brake on key & id length changes
@@ -41,28 +43,34 @@ var config = BuildDefaultConfig()
 // baseURL == "https://send.firefox.com/"
 // fileID == "c8ab3218f9"
 // secretKey == "39EL7SuqwWNYe4ISl2M06g"
-func NewConfigFromURL(url string) (*Config, error) {
+func (fi *FileInfo) ParseURL(url string) error {
 	// TODO Validate with regex
 	l := len(url)
 
 	key := url[l-22:]
 	rawKey, err := base64.RawURLEncoding.DecodeString(key)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to decode a key: %v", err)
+		return fmt.Errorf("Failed to decode a key: %v", err)
 	}
 
-	c := &Config{
-		BaseURL:   url[:l-43],
-		FileID:    url[l-34 : l-24],
-		SecretKey: rawKey,
-		RawURL:    url,
-	}
+	fi.BaseURL = url[:l-43]
+	fi.FileID = url[l-34 : l-24]
+	fi.SecretKey = rawKey
+	fi.RawURL = url
 
-	return c, nil
+	return nil
 }
 
-func BuildDefaultConfig() *Config {
-	return &Config{BaseURL: "https://send.firefox.com/"}
+func (fi *FileInfo) CheckRequirements() error {
+	if fi.DownloadLimit > 20 || fi.DownloadLimit < 0 {
+		return fmt.Errorf("Wrong range of download limit: %d, must be 1-20", fi.DownloadLimit)
+	}
+	// TODO plus 16 bytes mac tag
+	if fi.Size > 1024*1024*1024 {
+		return fmt.Errorf("Exceed file size: %d, must be max 1gb", fi.Size)
+	}
+
+	return nil
 }
 
 func ParseNonce(header string) ([]byte, error) {

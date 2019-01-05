@@ -21,15 +21,19 @@ type ManagedKey struct {
 	err        error
 }
 
-func NewManagedKey(secretKey []byte, password string, rawURL string) *ManagedKey {
-	key := &ManagedKey{SecretKey: secretKey}
+func NewManagedKey(fileInfo *FileInfo) *ManagedKey {
+	if fileInfo == nil {
+		fileInfo = &FileInfo{}
+	}
+
+	key := &ManagedKey{SecretKey: fileInfo.SecretKey}
 	key.MetaIV = make([]byte, 12) // Send uses a 12 byte all-zero IV when encrypting metadata
 
 	return key.
 		RandomSecretKey().
 		DeriveEncryptKey().
 		RandomEncryptIV().
-		DeriveAuthKey(password, rawURL).
+		DeriveAuthKey(fileInfo.Password, fileInfo.RawURL).
 		DeriveMetaKey()
 }
 

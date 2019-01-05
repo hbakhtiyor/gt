@@ -9,15 +9,8 @@ import (
 	"net/http/httputil"
 )
 
-type FileInfo struct {
-	PasswordRequired bool  `json:"password,omitempty"`
-	DownloadLimit    int   `json:"dlimit,omitempty"`
-	DownloadTotal    int   `json:"dtotal,omitempty"`
-	TTL              int64 `json:"ttl,omitempty"`
-}
-
-func GetInfo() (*FileInfo, error) {
-	response, err := http.Get(fmt.Sprintf(config.BaseURL+"api/info/%s", config.FileID))
+func GetInfo(fileInfo *FileInfo) (*FileInfo, error) {
+	response, err := http.Get(fmt.Sprintf(fileInfo.BaseURL+"api/info/%s", fileInfo.FileID))
 
 	if err != nil {
 		return nil, err
@@ -44,8 +37,8 @@ func GetInfo() (*FileInfo, error) {
 	return result, nil
 }
 
-func Exists() (*FileInfo, error) {
-	response, err := http.Get(fmt.Sprintf(config.BaseURL+"api/exists/%s", config.FileID))
+func Exists(fileInfo *FileInfo) (*FileInfo, error) {
+	response, err := http.Get(fmt.Sprintf(fileInfo.BaseURL+"api/exists/%s", fileInfo.FileID))
 
 	if err != nil {
 		return nil, err

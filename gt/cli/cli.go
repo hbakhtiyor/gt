@@ -14,6 +14,7 @@ import (
 	"github.com/hbakhtiyor/gt/gt/fsend"
 	"github.com/hbakhtiyor/gt/gt/utils"
 	"github.com/hbakhtiyor/gt/gt/wt"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
@@ -36,7 +37,7 @@ func Run() {
 	printFlag := wtCommand.Bool("p", false, "Only print the direct link (without downloading it)")
 	limitParallelFlag := wtCommand.Int("l", runtime.NumCPU(), "Parallel limit for uploading/downloading files")
 
-	passwordFlag := fsCommand.String("pwd", "", "Set password to the file.")
+	passwordFlag := fsCommand.Bool("pwd", false, "Prompt to set a password to the file.")
 	downloadLimitFlag := fsCommand.Int("dl", 0, "Set download limit of the file.")
 
 	flag.Parse()
@@ -51,7 +52,6 @@ func Run() {
 	}
 
 	args := flag.Args()
-	options := &fsend.Options{Password: *passwordFlag, DownloadLimit: *downloadLimitFlag}
 
 	switch os.Args[1] {
 	case "wt":
@@ -88,13 +88,13 @@ func Run() {
 				fmt.Println(getDownloadLinks(rawURLs))
 			} else {
 				err := downloadFiles(rawURLs, *limitParallelFlag)
-				checkError(err)
+				checkError(err, true)
 			}
 		} else if fsCommand.Parsed() {
+			password := checkPasswordPrompt(*passwordFlag)
 			for _, rawURL := range rawURLs {
-				if err := fsend.DownloadFile(rawURL, options); err != nil {
-					fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
-				}
+				err := fsend.DownloadFile(rawURL, password, false);
+				checkError(err, false)
 			}
 		}
 	}
@@ -103,28 +103,43 @@ func Run() {
 	if len(filePaths) > 0 {
 		if wtCommand.Parsed() {
 			result, err := wt.UploadFiles(filePaths, fileNames, *messageFlag, *fromFlag, strings.Split(*toFlag, ","), *limitParallelFlag)
-			checkError(err)
+			checkError(err, true)
 
 			// TODO [Copied to clipboard]
 			// https://github.com/atotto/clipboard ?
 			fmt.Printf("\n%s: %v\n", programName, result.ShortenedURL)
 		} else if fsCommand.Parsed() {
+			password := checkPasswordPrompt(*passwordFlag)
 			for _, filePath := range filePaths {
-				result, err := fsend.UploadFile(filePath, nil, options)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+				fileInfo := &fsend.FileInfo{Password: password, DownloadLimit: *downloadLimitFlag}
+				result, err := fsend.UploadFile(filePath, fileInfo, false)
+				checkError(err, false)
+				if result != nil {
+					fmt.Printf("%s\n", result.URL)
 				}
-				fmt.Printf("%s\n", result.URL)
 			}
 		}
 	}
 }
 
-func checkError(err error) {
+func checkError(err error, exit bool) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
-		os.Exit(1)
+		if exit {
+			os.Exit(1)
+		}
 	}
+}
+
+func checkPasswordPrompt(flag bool) string {
+	if flag {
+		fmt.Print("Please enter password now: ")
+		password, err := terminal.ReadPassword(0)
+		checkError(err, true)
+		fmt.Println()
+		return string(password)
+	}
+	return ""
 }
 
 func getResources(URIs []string) (filePaths []string, fileNames []string, rawURLs []string) {

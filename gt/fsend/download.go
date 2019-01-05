@@ -12,16 +12,17 @@ import (
 	"os"
 
 	aesgcm "github.com/hbakhtiyor/openssl_gcm"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // Given a Send url, download and return the encrypted data and metadata
-func Download(meta *Meta, key *ManagedKey) error {
-	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(config.BaseURL+"api/download/%s", config.FileID), nil)
+func Download(fileInfo *FileInfo, key *ManagedKey) error {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(fileInfo.BaseURL+"api/download/%s", fileInfo.FileID), nil)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(meta.Nonce)))
+	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(fileInfo.Nonce)))
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
@@ -43,12 +44,12 @@ func Download(meta *Meta, key *ManagedKey) error {
 
 	reader := bufio.NewReader(response.Body)
 	// https://www.w3.org/TR/WebCryptoAPI/#aes-gcm-operations
-	r, err := aesgcm.NewGcmDecryptReader(reader, key.EncryptKey, key.EncryptIV, nil, meta.Size)
+	r, err := aesgcm.NewGcmDecryptReader(reader, key.EncryptKey, key.EncryptIV, nil, fileInfo.Size)
 	if err != nil {
 		return err
 	}
 
-	file, err := os.Create(meta.MetaData.Name)
+	file, err := os.Create(fileInfo.Name)
 	if err != nil {
 		return err
 	}
@@ -60,17 +61,13 @@ func Download(meta *Meta, key *ManagedKey) error {
 	return nil
 }
 
-func DownloadFile(url string, options *Options) error {
-	cfg, err := NewConfigFromURL(url)
-	if err != nil {
+func DownloadFile(url, password string, ignoreVersion bool) error {
+	fileInfo := &FileInfo{Password: password}
+	if err := fileInfo.ParseURL(url); err != nil {
 		return err
 	}
-	config = cfg
-	if options == nil {
-		options = &Options{}
-	}
 
-	if status, err := CheckVersion(options.IgnoreVersion); err != nil {
+	if status, err := CheckVersion(fileInfo, ignoreVersion); err != nil {
 		return err
 	} else if !status {
 		return errors.New("Potentially incompatible server version, use --ignore-version to disable version checks")
@@ -78,26 +75,33 @@ func DownloadFile(url string, options *Options) error {
 
 	fmt.Println("Checking if file exists...")
 
-	if info, err := Exists(); err != nil {
+	if info, err := Exists(fileInfo); err != nil {
 		return err
-	} else if info.PasswordRequired && options.Password == "" {
-		fmt.Scanln("A password is required, please enter it now", &options.Password)
-	} else if !info.PasswordRequired && options.Password != "" {
+	} else if info.PasswordRequired && fileInfo.Password == "" {
+		fmt.Print("A password is required, please enter it now: ")
+		password, err := terminal.ReadPassword(0)
+		if err != nil {
+			return err
+		}
+		fmt.Println()
+		fileInfo.Password = string(password)
+	} else if !info.PasswordRequired && fileInfo.Password != "" {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
 
-	mKey := NewManagedKey(config.SecretKey, options.Password, config.RawURL)
+	mKey := NewManagedKey(fileInfo)
 	if mKey.Err() != nil {
 		return mKey.Err()
 	}
 
-	nonce, err := GetNonce()
+	nonce, err := GetNonce(fileInfo)
 	if err != nil {
 		return err
 	}
+	fileInfo.Nonce = nonce
 
 	fmt.Println("Fetching metadata...")
-	meta, err := GetMetadata(nonce, mKey)
+	meta, err := GetMetadata(fileInfo, mKey)
 	if err != nil {
 		return err
 	}
@@ -108,9 +112,12 @@ func DownloadFile(url string, options *Options) error {
 	}
 
 	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", meta.MetaData.Name, meta.Size-16)
+	fileInfo.Name = meta.MetaData.Name
+	fileInfo.Size = meta.Size
+	fileInfo.Nonce = meta.Nonce
 
-	fmt.Println("Downloading " + config.RawURL)
-	err = Download(meta, mKey)
+	fmt.Println("Downloading " + fileInfo.RawURL)
+	err = Download(fileInfo, mKey)
 	if err != nil {
 		return err
 	}
@@ -118,8 +125,8 @@ func DownloadFile(url string, options *Options) error {
 	return nil
 }
 
-func GetNonce() ([]byte, error) {
-	response, err := http.Head(fmt.Sprintf(config.BaseURL+"download/%s", config.FileID))
+func GetNonce(fileInfo *FileInfo) ([]byte, error) {
+	response, err := http.Head(fmt.Sprintf(fileInfo.BaseURL+"download/%s", fileInfo.FileID))
 
 	if err != nil {
 		return nil, err
