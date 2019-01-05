@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
-	"strings"
 )
 
 type Meta struct {
@@ -46,17 +45,14 @@ func GetMetadata(nonce []byte, key *ManagedKey) (*Meta, error) {
 		log.Printf("GetMetadata: Received body while processing POST request: %s\n", responseDump)
 	}
 
-	newNonce, err := base64.StdEncoding.DecodeString(strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1))
-	if err != nil {
-		return nil, err
-	}
-
 	result := &Meta{}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return nil, err
 	}
 
-	result.Nonce = newNonce
+	if result.Nonce, err = ParseNonce(response.Header.Get("WWW-Authenticate")); err != nil {
+		return nil, err
+	}
 
 	encMeta, err := base64.RawURLEncoding.DecodeString(result.Data)
 	if err != nil {

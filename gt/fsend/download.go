@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"strings"
 
 	aesgcm "github.com/hbakhtiyor/openssl_gcm"
 )
@@ -139,6 +138,5 @@ func GetNonce() ([]byte, error) {
 		log.Printf("GetNonce: Received body while processing POST request: %s\n", responseDump)
 	}
 
-	nonce := strings.Replace(response.Header.Get("WWW-Authenticate"), "send-v1 ", "", 1)
-	return base64.StdEncoding.DecodeString(nonce)
+	return ParseNonce(response.Header.Get("WWW-Authenticate"))
 }

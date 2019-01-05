@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -23,6 +24,7 @@ type Config struct {
 	RawURL    string
 }
 
+// TODO FileInfo
 type Options struct {
 	Password      string
 	IgnoreVersion bool
@@ -61,4 +63,12 @@ func NewConfigFromURL(url string) (*Config, error) {
 
 func BuildDefaultConfig() *Config {
 	return &Config{BaseURL: "https://send.firefox.com/"}
+}
+
+func ParseNonce(header string) ([]byte, error) {
+	r := strings.Fields(header)
+	if len(r) < 2 {
+		return nil, fmt.Errorf("Failed to parse a nonce: %v", header)
+	}
+	return base64.StdEncoding.DecodeString(r[1])
 }
