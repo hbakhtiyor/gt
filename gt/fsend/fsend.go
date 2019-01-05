@@ -68,7 +68,9 @@ func (fi *FileInfo) CheckRequirements() error {
 	if fi.Size > 1024*1024*1024 {
 		return fmt.Errorf("Exceed file size: %d, must be max 1gb", fi.Size)
 	}
-
+	if len(fi.Password) > 32 {
+		return fmt.Errorf("Maximum length of password is 32: %d", len(fi.Password))
+	}
 	return nil
 }
 
