@@ -18,6 +18,7 @@ type ManagedKey struct {
 	AuthKey    []byte
 	MetaKey    []byte
 	MetaIV     []byte
+	Nonce      []byte
 	err        error
 }
 
@@ -135,11 +136,16 @@ func (key *ManagedKey) DeriveMetaKey() *ManagedKey {
 	return key
 }
 
-// Sign the server nonce from the WWW-Authenticate header with an authKey
-func (key *ManagedKey) SignNonce(nonce []byte) []byte {
-	mac := hmac.New(sha256.New, key.AuthKey)
-	mac.Write(nonce)
-	return mac.Sum(nil)
+// SignNonce signs the server nonce from the WWW-Authenticate header with an AuthKey.
+func (key *ManagedKey) AuthHeader() string {
+	sum := key.AuthKey
+	if key.Nonce != nil {
+		mac := hmac.New(sha256.New, key.AuthKey)
+		mac.Write(key.Nonce)
+		sum = mac.Sum(nil)
+		key.Nonce = nil
+	}
+	return "send-v1 " + base64.RawURLEncoding.EncodeToString(sum)
 }
 
 func (key *ManagedKey) Err() error {

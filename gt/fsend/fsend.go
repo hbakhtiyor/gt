@@ -25,7 +25,6 @@ type FileInfo struct {
 	Password         string
 	Name             string
 	Size             int64
-	Nonce            []byte
 	Owner            string
 	PasswordRequired bool  `json:"password,omitempty"`
 	DownloadLimit    int   `json:"dlimit,omitempty"`
@@ -78,5 +77,9 @@ func ParseNonce(header string) ([]byte, error) {
 	if len(r) < 2 {
 		return nil, fmt.Errorf("Failed to parse a nonce: %v", header)
 	}
-	return base64.StdEncoding.DecodeString(r[1])
+	nonce, err := base64.StdEncoding.DecodeString(r[1])
+	if err != nil {
+		return nil, fmt.Errorf("Failed to decode a nonce: %v", err)
+	}
+	return nonce, nil
 }

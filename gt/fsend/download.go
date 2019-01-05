@@ -22,7 +22,7 @@ func Download(fileInfo *FileInfo, key *ManagedKey) error {
 		return err
 	}
 
-	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(fileInfo.Nonce)))
+	req.Header.Set("Authorization", key.AuthHeader())
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
@@ -93,12 +93,11 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 	if mKey.Err() != nil {
 		return mKey.Err()
 	}
-
 	nonce, err := GetNonce(fileInfo)
 	if err != nil {
 		return err
 	}
-	fileInfo.Nonce = nonce
+	mKey.Nonce = nonce
 
 	fmt.Println("Fetching metadata...")
 	meta, err := GetMetadata(fileInfo, mKey)
@@ -114,7 +113,6 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", meta.MetaData.Name, meta.Size-16)
 	fileInfo.Name = meta.MetaData.Name
 	fileInfo.Size = meta.Size
-	fileInfo.Nonce = meta.Nonce
 
 	fmt.Println("Downloading " + fileInfo.RawURL)
 	err = Download(fileInfo, mKey)

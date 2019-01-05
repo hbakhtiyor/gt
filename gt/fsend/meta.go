@@ -15,7 +15,6 @@ type Meta struct {
 	FinalDownload bool   `json:"finalDownload"`
 	Size          int64  `json:"size,string"`
 	TTL           int64  `json:"ttl"`
-	Nonce         []byte
 	MetaData      *MetaData
 }
 
@@ -25,7 +24,7 @@ func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.SignNonce(fileInfo.Nonce)))
+	req.Header.Set("Authorization", key.AuthHeader())
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
@@ -50,9 +49,11 @@ func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
 		return nil, err
 	}
 
-	if result.Nonce, err = ParseNonce(response.Header.Get("WWW-Authenticate")); err != nil {
+	nonce, err := ParseNonce(response.Header.Get("WWW-Authenticate"))
+	if err != nil {
 		return nil, err
 	}
+	key.Nonce = nonce
 
 	encMeta, err := base64.RawURLEncoding.DecodeString(result.Data)
 	if err != nil {

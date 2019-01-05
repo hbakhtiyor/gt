@@ -69,7 +69,7 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 		return nil, err
 	}
 	req.Header.Set("X-File-Metadata", base64.RawURLEncoding.EncodeToString(encMeta))
-	req.Header.Set("Authorization", "send-v1 "+base64.RawURLEncoding.EncodeToString(key.AuthKey))
+	req.Header.Set("Authorization", key.AuthHeader())
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	response, err := DefaultClient.Do(req)
 
