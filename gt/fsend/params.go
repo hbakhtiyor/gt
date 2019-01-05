@@ -11,7 +11,7 @@ import (
 	"net/http/httputil"
 )
 
-// Change the download limit for a file hosted on a Send Server
+// SetParams changes the download limit for a file hosted on a Send Server
 func SetParams(fileInfo *FileInfo) (bool, error) {
 	j := &Token{OwnerToken: fileInfo.Owner, DownloadLimit: fileInfo.DownloadLimit}
 	b := bytes.NewBuffer(nil)

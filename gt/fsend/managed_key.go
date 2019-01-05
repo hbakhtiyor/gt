@@ -136,7 +136,7 @@ func (key *ManagedKey) DeriveMetaKey() *ManagedKey {
 	return key
 }
 
-// SignNonce signs the server nonce from the WWW-Authenticate header with an AuthKey.
+// AuthHeader signs the server nonce from the WWW-Authenticate header with an AuthKey.
 func (key *ManagedKey) AuthHeader() string {
 	sum := key.AuthKey
 	if key.Nonce != nil {

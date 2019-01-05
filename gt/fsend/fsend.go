@@ -36,7 +36,7 @@ type FileInfo struct {
 var DefaultClient = &http.Client{}
 var DefaultBaseURL = "https://send.firefox.com/"
 
-// Splits a Send url into key, fileid and 'prefix' for the Send server
+// ParseURL parses a Send url into key, fileid and 'prefix' for the Send server
 // Should handle any hostname, but will brake on key & id length changes
 // e.g. https://send.firefox.com/download/c8ab3218f9/#39EL7SuqwWNYe4ISl2M06g
 // baseURL == "https://send.firefox.com/"

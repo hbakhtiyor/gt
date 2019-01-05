@@ -42,7 +42,7 @@ func (md *MetaData) Encrypt(key *ManagedKey) ([]byte, error) {
 	return aesgcm.Seal(nil, key.MetaIV, b.Bytes(), nil), nil
 }
 
-// Decrypt file metadata with the same method as the Send browser/js client
+// DecryptMetadata decrypts file metadata with the same method as the Send browser/js client
 func DecryptMetadata(encMeta []byte, key *ManagedKey) (*MetaData, error) {
 	block, err := aes.NewCipher(key.MetaKey)
 	if err != nil {

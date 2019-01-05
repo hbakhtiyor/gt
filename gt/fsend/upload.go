@@ -22,7 +22,7 @@ type File struct {
 	Owner string `json:"owner"`
 }
 
-// Uploads data to Send.
+// Upload and encrypt data to Send.
 func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 	metadata := &MetaData{
 		Name: fileInfo.Name,
@@ -103,7 +103,7 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 	return result, <-errChan
 }
 
-// Encrypt & Upload a file to send and return the download URL
+// UploadFile uploads a file to send and return the download URL
 func UploadFile(filePath string, fileInfo *FileInfo, ignoreVersion bool) (*File, error) {
 	if fileInfo == nil {
 		fileInfo = &FileInfo{BaseURL: DefaultBaseURL}

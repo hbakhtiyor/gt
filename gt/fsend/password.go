@@ -12,7 +12,7 @@ import (
 	"net/http/httputil"
 )
 
-// set or change the password required to download a file hosted on a send server.
+// SetPassword sets or changes the password required to download a file hosted on a send server.
 func SetPassword(fileInfo *FileInfo) (bool, error) {
 	mKey := NewManagedKey(fileInfo)
 	if mKey.Err() != nil {

@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-// Given a Send url, download and return the encrypted data and metadata
+// Download given a Send url, and decrypt the encrypted data.
 func Download(fileInfo *FileInfo, key *ManagedKey) error {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(fileInfo.BaseURL+"api/download/%s", fileInfo.FileID), nil)
 	if err != nil {
