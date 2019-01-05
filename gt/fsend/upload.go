@@ -22,7 +22,7 @@ type File struct {
 }
 
 // Upload and encrypt data to Send.
-func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
+func Upload(file *os.File, fileInfo *FileInfo) (*File, error) {
 	metadata := &MetaData{
 		Name: fileInfo.Name,
 		Type: "application/octet-stream",
@@ -44,7 +44,7 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 		}
 		// TODO
 		// reader := bufio.NewReader(file)
-		r, err := aesgcm.NewGcmEncryptReader(file, key.EncryptKey, key.EncryptIV, nil)
+		r, err := aesgcm.NewGcmEncryptReader(file, fileInfo.Key.EncryptKey, fileInfo.Key.EncryptIV, nil)
 		if err != nil {
 			errChan <- err
 			return
@@ -63,13 +63,13 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 		return nil, err
 	}
 
-	encMeta, err := metadata.EncryptToString(key)
+	encMeta, err := metadata.EncryptToString(fileInfo.Key)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("X-File-Metadata", encMeta)
-	req.Header.Set("Authorization", key.AuthHeader())
+	req.Header.Set("Authorization", fileInfo.Key.AuthHeader())
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	response, err := DefaultClient.Do(req)
 
@@ -98,7 +98,13 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 		return nil, err
 	}
 
-	result.URL += "#" + key.RawSecretKey()
+	result.URL += "#" + fileInfo.Key.RawSecretKey()
+
+	fileInfo.Owner = result.Owner
+	if err := fileInfo.ParseURLAndUpdateKey(result.URL); err != nil {
+		<-errChan
+		return nil, err
+	}
 
 	return result, <-errChan
 }
@@ -134,20 +140,18 @@ func UploadFile(filePath string, fileInfo *FileInfo, ignoreVersion bool) (*File,
 	if err != nil {
 		return nil, err
 	}
+	fileInfo.Key = key
 
 	fileInfo.Name = filepath.Base(file.Name())
 	fmt.Printf("Uploading \"%s\"\n", fileInfo.Name)
-	r, err := Upload(file, fileInfo, key)
+	r, err := Upload(file, fileInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	fileInfo.Owner = r.Owner
-	fileInfo.ParseURL(r.URL)
-
 	if fileInfo.Password != "" {
 		fmt.Println("Setting password")
-		if status, err := SetPassword(fileInfo, key); err != nil {
+		if status, err := SetPassword(fileInfo); err != nil {
 			return nil, err
 		} else if status {
 			fmt.Println("Successfully to set password")

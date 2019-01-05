@@ -15,13 +15,13 @@ import (
 )
 
 // Download given a Send url, and decrypt the encrypted data.
-func Download(fileInfo *FileInfo, key *ManagedKey) error {
+func Download(fileInfo *FileInfo) error {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(fileInfo.BaseURL+"api/download/%s", fileInfo.FileID), nil)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Authorization", key.AuthHeader())
+	req.Header.Set("Authorization", fileInfo.Key.AuthHeader())
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
@@ -43,7 +43,7 @@ func Download(fileInfo *FileInfo, key *ManagedKey) error {
 
 	reader := bufio.NewReader(response.Body)
 	// https://www.w3.org/TR/WebCryptoAPI/#aes-gcm-operations
-	r, err := aesgcm.NewGcmDecryptReader(reader, key.EncryptKey, key.EncryptIV, nil, fileInfo.Size)
+	r, err := aesgcm.NewGcmDecryptReader(reader, fileInfo.Key.EncryptKey, fileInfo.Key.EncryptIV, nil, fileInfo.Size)
 	if err != nil {
 		return err
 	}
@@ -61,8 +61,8 @@ func Download(fileInfo *FileInfo, key *ManagedKey) error {
 }
 
 func DownloadFile(url, password string, ignoreVersion bool) error {
-	fileInfo := &FileInfo{Password: password}
-	if err := fileInfo.ParseURL(url); err != nil {
+	fileInfo, err := NewFileInfo(url, password)
+	if err != nil {
 		return err
 	}
 
@@ -73,12 +73,7 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 	}
 
 	fmt.Println("Checking if file exists...")
-	mKey, err := NewManagedKey(fileInfo)
-	if err != nil {
-		return err
-	}
-
-	if info, err := Exists(fileInfo, mKey); err != nil {
+	if info, err := Exists(fileInfo); err != nil {
 		return err
 	} else if info.PasswordRequired && fileInfo.Password == "" {
 		fmt.Print("A password is required, please enter it now: ")
@@ -87,9 +82,7 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 			return err
 		}
 		fmt.Println()
-		fileInfo.Password = string(password)
-		// Update managed keys with password
-		if mKey, err = NewManagedKey(fileInfo); err != nil {
+		if err := fileInfo.SetPassword(string(password)); err != nil {
 			return err
 		}
 	} else if !info.PasswordRequired && fileInfo.Password != "" {
@@ -97,14 +90,14 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 	}
 
 	fmt.Println("Fetching metadata...")
-	_, err = GetMetadata(fileInfo, mKey)
+	_, err = GetMetadata(fileInfo)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", fileInfo.Name, fileInfo.Size-16)
 	fmt.Println("Downloading " + fileInfo.RawURL)
-	err = Download(fileInfo, mKey)
+	err = Download(fileInfo)
 	if err != nil {
 		return err
 	}

@@ -26,6 +26,7 @@ type FileInfo struct {
 	Name             string
 	Size             int64
 	Owner            string
+	Key              *ManagedKey
 	PasswordRequired bool  `json:"password,omitempty"`
 	DownloadLimit    int   `json:"dlimit,omitempty"`
 	DownloadTotal    int   `json:"dtotal,omitempty"`
@@ -35,6 +36,35 @@ type FileInfo struct {
 // DefaultClient is the default Client and is used by Put, and Options.
 var DefaultClient = &http.Client{}
 var DefaultBaseURL = "https://send.firefox.com/"
+
+func NewFileInfo(url, password string) (*FileInfo, error) {
+	fi := &FileInfo{Password: password}
+	if err := fi.ParseURL(url); err != nil {
+		return nil, err
+	}
+
+	key, err := NewManagedKey(fi)
+	if err != nil {
+		return nil, err
+	}
+	fi.Key = key
+
+	return fi, nil
+}
+
+func (fi *FileInfo) ParseURLAndUpdateKey(url string) error {
+	if err := fi.ParseURL(url); err != nil {
+		return err
+	}
+
+	key, err := NewManagedKey(fi)
+	if err != nil {
+		return err
+	}
+	fi.Key = key
+
+	return nil
+}
 
 // ParseURL parses a Send url into key, fileid and 'prefix' for the Send server
 // Should handle any hostname, but will brake on key & id length changes
@@ -57,6 +87,17 @@ func (fi *FileInfo) ParseURL(url string) error {
 	fi.SecretKey = rawKey
 	fi.RawURL = url
 
+	return nil
+}
+
+func (fi *FileInfo) SetPassword(password string) error {
+	fi.Password = password
+	// Update managed keys with password
+	key, err := NewManagedKey(fi)
+	if err != nil {
+		return err
+	}
+	fi.Key = key
 	return nil
 }
 

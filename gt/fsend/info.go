@@ -37,7 +37,7 @@ func GetInfo(fileInfo *FileInfo) (*FileInfo, error) {
 	return result, nil
 }
 
-func Exists(fileInfo *FileInfo, key *ManagedKey) (*FileInfo, error) {
+func Exists(fileInfo *FileInfo) (*FileInfo, error) {
 	response, err := http.Get(fmt.Sprintf(fileInfo.BaseURL+"api/exists/%s", fileInfo.FileID))
 
 	if err != nil {
@@ -65,7 +65,7 @@ func Exists(fileInfo *FileInfo, key *ManagedKey) (*FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	key.Nonce = nonce
+	fileInfo.Key.Nonce = nonce
 
 	return result, nil
 }

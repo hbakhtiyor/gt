@@ -18,13 +18,13 @@ type Meta struct {
 	MetaData      *MetaData
 }
 
-func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
+func GetMetadata(fileInfo *FileInfo) (*Meta, error) {
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(fileInfo.BaseURL+"api/metadata/%s", fileInfo.FileID), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", key.AuthHeader())
+	req.Header.Set("Authorization", fileInfo.Key.AuthHeader())
 	response, err := DefaultClient.Do(req)
 
 	if err != nil {
@@ -53,14 +53,14 @@ func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
 	if err != nil {
 		return nil, err
 	}
-	key.Nonce = nonce
+	fileInfo.Key.Nonce = nonce
 
 	encMeta, err := base64.RawURLEncoding.DecodeString(result.Data)
 	if err != nil {
 		return nil, err
 	}
 
-	metadata, err := DecryptMetadata(encMeta, key)
+	metadata, err := DecryptMetadata(encMeta, fileInfo.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
 	fileInfo.Name = metadata.Name
 	fileInfo.Size = result.Size
 
-	key.EncryptIV, err = base64.RawURLEncoding.DecodeString(metadata.IV)
+	fileInfo.Key.EncryptIV, err = base64.RawURLEncoding.DecodeString(metadata.IV)
 	if err != nil {
 		return nil, err
 	}

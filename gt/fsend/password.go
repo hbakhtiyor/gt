@@ -12,8 +12,8 @@ import (
 )
 
 // SetPassword sets or changes the password required to download a file hosted on a send server.
-func SetPassword(fileInfo *FileInfo, key *ManagedKey) (bool, error) {
-	j := &Token{OwnerToken: fileInfo.Owner, Auth: key.Auth()}
+func SetPassword(fileInfo *FileInfo) (bool, error) {
+	j := &Token{OwnerToken: fileInfo.Owner, Auth: fileInfo.Key.Auth()}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return false, err
