@@ -22,7 +22,7 @@ type ManagedKey struct {
 	err        error
 }
 
-func NewManagedKey(fileInfo *FileInfo) *ManagedKey {
+func NewManagedKey(fileInfo *FileInfo) (*ManagedKey, error) {
 	if fileInfo == nil {
 		fileInfo = &FileInfo{}
 	}
@@ -35,7 +35,7 @@ func NewManagedKey(fileInfo *FileInfo) *ManagedKey {
 		DeriveEncryptKey().
 		RandomEncryptIV().
 		DeriveAuthKey(fileInfo.Password, fileInfo.RawURL).
-		DeriveMetaKey()
+		DeriveMetaKey(), key.err
 }
 
 func (key *ManagedKey) RawSecretKey() string {
@@ -136,6 +136,10 @@ func (key *ManagedKey) DeriveMetaKey() *ManagedKey {
 	return key
 }
 
+func (key *ManagedKey) Auth() string {
+	return base64.RawURLEncoding.EncodeToString(key.AuthKey)
+}
+
 // AuthHeader signs the server nonce from the WWW-Authenticate header with an AuthKey.
 func (key *ManagedKey) AuthHeader() string {
 	sum := key.AuthKey
@@ -146,8 +150,4 @@ func (key *ManagedKey) AuthHeader() string {
 		key.Nonce = nil
 	}
 	return "send-v1 " + base64.RawURLEncoding.EncodeToString(sum)
-}
-
-func (key *ManagedKey) Err() error {
-	return key.err
 }

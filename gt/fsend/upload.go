@@ -1,7 +1,6 @@
 package fsend
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,11 +26,6 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 	metadata := &MetaData{
 		Name: fileInfo.Name,
 		Type: "application/octet-stream",
-	}
-
-	encMeta, err := metadata.Encrypt(key)
-	if err != nil {
-		return nil, err
 	}
 
 	readBody, writeBody := io.Pipe()
@@ -68,7 +62,13 @@ func Upload(file *os.File, fileInfo *FileInfo, key *ManagedKey) (*File, error) {
 		<-errChan
 		return nil, err
 	}
-	req.Header.Set("X-File-Metadata", base64.RawURLEncoding.EncodeToString(encMeta))
+
+	encMeta, err := metadata.EncryptToString(key)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("X-File-Metadata", encMeta)
 	req.Header.Set("Authorization", key.AuthHeader())
 	req.Header.Set("Content-Type", form.FormDataContentType())
 	response, err := DefaultClient.Do(req)
@@ -130,15 +130,13 @@ func UploadFile(filePath string, fileInfo *FileInfo, ignoreVersion bool) (*File,
 		fmt.Println("\033[1;41m!!! Potentially incompatible server version !!!\033[0m")
 	}
 
-	fileName := filepath.Base(file.Name())
-
-	key := NewManagedKey(nil)
-	if key.Err() != nil {
-		return nil, key.Err()
+	key, err := NewManagedKey(fileInfo)
+	if err != nil {
+		return nil, err
 	}
 
-	fileInfo.Name = fileName
-	fmt.Printf("Uploading \"%s\"\n", fileName)
+	fileInfo.Name = filepath.Base(file.Name())
+	fmt.Printf("Uploading \"%s\"\n", fileInfo.Name)
 	r, err := Upload(file, fileInfo, key)
 	if err != nil {
 		return nil, err
@@ -149,7 +147,7 @@ func UploadFile(filePath string, fileInfo *FileInfo, ignoreVersion bool) (*File,
 
 	if fileInfo.Password != "" {
 		fmt.Println("Setting password")
-		if status, err := SetPassword(fileInfo); err != nil {
+		if status, err := SetPassword(fileInfo, key); err != nil {
 			return nil, err
 		} else if status {
 			fmt.Println("Successfully to set password")

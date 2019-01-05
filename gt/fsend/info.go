@@ -37,7 +37,7 @@ func GetInfo(fileInfo *FileInfo) (*FileInfo, error) {
 	return result, nil
 }
 
-func Exists(fileInfo *FileInfo) (*FileInfo, error) {
+func Exists(fileInfo *FileInfo, key *ManagedKey) (*FileInfo, error) {
 	response, err := http.Get(fmt.Sprintf(fileInfo.BaseURL+"api/exists/%s", fileInfo.FileID))
 
 	if err != nil {
@@ -61,6 +61,11 @@ func Exists(fileInfo *FileInfo) (*FileInfo, error) {
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return nil, err
 	}
+	nonce, err := ParseNonce(response.Header.Get("WWW-Authenticate"))
+	if err != nil {
+		return nil, err
+	}
+	key.Nonce = nonce
 
 	return result, nil
 }

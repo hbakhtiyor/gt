@@ -2,7 +2,6 @@ package fsend
 
 import (
 	"bufio"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -74,8 +73,12 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 	}
 
 	fmt.Println("Checking if file exists...")
+	mKey, err := NewManagedKey(fileInfo)
+	if err != nil {
+		return err
+	}
 
-	if info, err := Exists(fileInfo); err != nil {
+	if info, err := Exists(fileInfo, mKey); err != nil {
 		return err
 	} else if info.PasswordRequired && fileInfo.Password == "" {
 		fmt.Print("A password is required, please enter it now: ")
@@ -85,35 +88,21 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 		}
 		fmt.Println()
 		fileInfo.Password = string(password)
+		// Update managed keys with password
+		if mKey, err = NewManagedKey(fileInfo); err != nil {
+			return err
+		}
 	} else if !info.PasswordRequired && fileInfo.Password != "" {
 		fmt.Println("A password was provided but none is required, ignoring...")
 	}
 
-	mKey := NewManagedKey(fileInfo)
-	if mKey.Err() != nil {
-		return mKey.Err()
-	}
-	nonce, err := GetNonce(fileInfo)
-	if err != nil {
-		return err
-	}
-	mKey.Nonce = nonce
-
 	fmt.Println("Fetching metadata...")
-	meta, err := GetMetadata(fileInfo, mKey)
+	_, err = GetMetadata(fileInfo, mKey)
 	if err != nil {
 		return err
 	}
 
-	mKey.EncryptIV, err = base64.RawURLEncoding.DecodeString(meta.MetaData.IV)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", meta.MetaData.Name, meta.Size-16)
-	fileInfo.Name = meta.MetaData.Name
-	fileInfo.Size = meta.Size
-
+	fmt.Printf("The file wishes to be called '%s' and is %d bytes in size\n", fileInfo.Name, fileInfo.Size-16)
 	fmt.Println("Downloading " + fileInfo.RawURL)
 	err = Download(fileInfo, mKey)
 	if err != nil {
@@ -121,27 +110,4 @@ func DownloadFile(url, password string, ignoreVersion bool) error {
 	}
 
 	return nil
-}
-
-func GetNonce(fileInfo *FileInfo) ([]byte, error) {
-	response, err := http.Head(fmt.Sprintf(fileInfo.BaseURL+"download/%s", fileInfo.FileID))
-
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode > 299 {
-		if Debug {
-			responseDump, _ := httputil.DumpResponse(response, true)
-			log.Printf("GetNonce: Error occurs while processing POST request: %s\n", responseDump)
-		}
-		return nil, errors.New(response.Status)
-	}
-
-	if Debug {
-		responseDump, _ := httputil.DumpResponse(response, true)
-		log.Printf("GetNonce: Received body while processing POST request: %s\n", responseDump)
-	}
-
-	return ParseNonce(response.Header.Get("WWW-Authenticate"))
 }

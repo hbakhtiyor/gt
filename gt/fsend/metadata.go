@@ -15,6 +15,14 @@ type MetaData struct {
 	Type string `json:"type"`
 }
 
+func (md *MetaData) EncryptToString(key *ManagedKey) (string, error) {
+	data, err := md.Encrypt(key)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
+}
+
 // Encrypt file metadata with the same method as the Send browser/js client
 func (md *MetaData) Encrypt(key *ManagedKey) ([]byte, error) {
 	md.IV = base64.RawURLEncoding.EncodeToString(key.EncryptIV)

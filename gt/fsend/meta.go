@@ -65,6 +65,13 @@ func GetMetadata(fileInfo *FileInfo, key *ManagedKey) (*Meta, error) {
 		return nil, err
 	}
 	result.MetaData = metadata
+	fileInfo.Name = metadata.Name
+	fileInfo.Size = result.Size
+
+	key.EncryptIV, err = base64.RawURLEncoding.DecodeString(metadata.IV)
+	if err != nil {
+		return nil, err
+	}
 
 	return result, nil
 }

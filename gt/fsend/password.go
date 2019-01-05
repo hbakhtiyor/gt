@@ -2,7 +2,6 @@ package fsend
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,14 +12,8 @@ import (
 )
 
 // SetPassword sets or changes the password required to download a file hosted on a send server.
-func SetPassword(fileInfo *FileInfo) (bool, error) {
-	mKey := NewManagedKey(fileInfo)
-	if mKey.Err() != nil {
-		return false, mKey.Err()
-	}
-
-	auth := base64.RawURLEncoding.EncodeToString(mKey.AuthKey)
-	j := &Token{OwnerToken: fileInfo.Owner, Auth: auth}
+func SetPassword(fileInfo *FileInfo, key *ManagedKey) (bool, error) {
+	j := &Token{OwnerToken: fileInfo.Owner, Auth: key.Auth()}
 	b := bytes.NewBuffer(nil)
 	if err := json.NewEncoder(b).Encode(j); err != nil {
 		return false, err
