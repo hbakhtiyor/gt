@@ -1,5 +1,5 @@
-github.com/hbakhtiyor/grab v2.0.1-0.20181222132738-723061bb4300+incompatible h1:yQ02d4XHEUFFMYja/BPGNNVqMVGYrV5cecWskcW71LM=
-github.com/hbakhtiyor/grab v2.0.1-0.20181222132738-723061bb4300+incompatible/go.mod h1:ao2v+w1+nllsyI3767z+4afD0KjODm0mx6pipvBigvs=
+github.com/hbakhtiyor/grab v2.0.1-0.20190106170134-3c1e84a92ce3+incompatible h1:7CfMO8sw6ej5uaa3UKdqr3n4p5OrXt5hdEuAYYsuQZ8=
+github.com/hbakhtiyor/grab v2.0.1-0.20190106170134-3c1e84a92ce3+incompatible/go.mod h1:ao2v+w1+nllsyI3767z+4afD0KjODm0mx6pipvBigvs=
 github.com/hbakhtiyor/openssl_gcm v0.0.0-20190103172222-574871c76f43 h1:euka/jWLGrU7JvVLHCxf2TWJXCwhgAGxyo1CxH2FRok=
 github.com/hbakhtiyor/openssl_gcm v0.0.0-20190103172222-574871c76f43/go.mod h1:6lHD9uqYoHFeN/oRHElinokw1I79qoXClv3AKUlaNYs=
 github.com/spacemonkeygo/openssl v0.0.0-20181017203307-c2dcc5cca94a h1:/eS3yfGjQKG+9kayBkj0ip1BGhq6zJ3eaVksphxAaek=

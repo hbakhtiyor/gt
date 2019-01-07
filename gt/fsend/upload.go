@@ -133,7 +133,7 @@ func UploadFile(filePath string, fileInfo *FileInfo, ignoreVersion bool) (*File,
 	if status, err := CheckVersion(fileInfo, ignoreVersion); err != nil {
 		return nil, err
 	} else if !status {
-		fmt.Println("\033[1;41m!!! Potentially incompatible server version !!!\033[0m")
+		return nil, errors.New("Potentially incompatible server version, use --ignore-version to disable version checks")
 	}
 
 	key, err := NewManagedKey(fileInfo)

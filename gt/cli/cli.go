@@ -9,12 +9,14 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"io"
 
 	"github.com/hbakhtiyor/grab"
 	"github.com/hbakhtiyor/gt/gt/fsend"
 	"github.com/hbakhtiyor/gt/gt/utils"
 	"github.com/hbakhtiyor/gt/gt/wt"
 	"golang.org/x/crypto/ssh/terminal"
+	aesgcm "github.com/hbakhtiyor/openssl_gcm"
 )
 
 var (
@@ -35,11 +37,11 @@ func Run() {
 	fromFlag := wtCommand.String("f", "", "Sender email.")
 	toFlag := wtCommand.String("t", "", "Recipient emails. Separate with comma(,)")
 	printFlag := wtCommand.Bool("p", false, "Only print the direct link (without downloading it)")
-	limitParallelFlag := wtCommand.Int("l", runtime.NumCPU(), "Parallel limit for uploading/downloading files")
+	limitParallelFlag := flag.Int("l", runtime.NumCPU(), "Parallel limit for uploading/downloading files")
 
-	passwordFlag := fsCommand.Bool("pwd", false, "Prompt to set a password to the file.")
+	passwordFlag := flag.Bool("pwd", false, "Prompt to set a password to the file.")
 	downloadLimitFlag := fsCommand.Int("dl", 0, "Set download limit of the file.")
-
+	// TODO show some flags in some subcommands
 	flag.Parse()
 
 	if flag.NArg() < 1 {
@@ -70,9 +72,10 @@ func Run() {
 			return
 		}
 		args = fsCommand.Args()
-	default:
-		fmt.Printf("%q is not valid command.\n", os.Args[1])
-		os.Exit(2)
+	// default:
+	// 	// TODO for filename need
+	// 	fmt.Printf("%q is not valid command.\n", os.Args[1])
+	// 	os.Exit(2)
 	}
 
 	filePaths, fileNames, rawURLs := getResources(args)
@@ -83,20 +86,14 @@ func Run() {
 
 	// Files to download
 	if len(rawURLs) > 0 {
-		if wtCommand.Parsed() {
-			if *printFlag {
-				fmt.Println(getDownloadLinks(rawURLs))
-			} else {
-				err := downloadFiles(rawURLs, *limitParallelFlag)
-				checkError(err, true)
-			}
-		} else if fsCommand.Parsed() {
-			password := checkPasswordPrompt(*passwordFlag)
-			for _, rawURL := range rawURLs {
-				err := fsend.DownloadFile(rawURL, password, false);
-				checkError(err, false)
-			}
+		if wtCommand.Parsed() && *printFlag {
+			// TODO Print only wt direct download links
+			return
 		}
+
+		password := checkPasswordPrompt(*passwordFlag)
+		err := downloadFiles(rawURLs, *limitParallelFlag, password, false)
+		checkError(err, true)
 	}
 
 	// Files to upload
@@ -183,26 +180,29 @@ func getResources(URIs []string) (filePaths []string, fileNames []string, rawURL
 	return
 }
 
-// DownloadFiles download files from the given a `we.tl/', `wetransfer.com/downloads/', or any URLs.
+// DownloadFiles download files from the given a `we.tl/', `wetransfer.com/downloads/', `send.firefox.com` or any URLs.
 //
-// First a direct link is retrieved (via GetDirectLink()), the filename will
+// First a direct link is retrieved (via GetDirectLink() for wt), the filename will
 // be extracted to it and it will be fetched and stored on the current
 // working directory.
-func downloadFiles(rawURLs []string, workers int) error {
-	directLinks := getDownloadLinks(rawURLs)
+func downloadFiles(rawURLs []string, workers int, password string, ignoreVersion bool) error {
+	requests := createGrabRequests(rawURLs)
 
-	if len(directLinks) == 0 {
-		return fmt.Errorf("There are no url(s) to download\n")
+	if len(requests) == 0 {
+		return fmt.Errorf("there are no url(s) to download")
 	}
 
-	fmt.Printf("Downloading %d files...\n", len(directLinks))
-	respch, err := grab.GetBatch(workers, ".", directLinks...)
-	if err != nil {
-		return err
-	}
+	fmt.Printf("Downloading %d files...\n", len(requests))
+	client := grab.NewClient()
 
-	// monitor downloads
-	responses := make([]*grab.Response, 0, len(directLinks))
+	respch := client.DoBatch(workers, requests...)
+
+	return monitorDownloads(respch, len(requests))
+}
+
+
+func monitorDownloads(respch <-chan *grab.Response, ln int) error {
+	responses := make([]*grab.Response, 0, ln)
 	t := time.NewTicker(200 * time.Millisecond)
 	defer t.Stop()
 
@@ -231,10 +231,14 @@ func downloadFiles(rawURLs []string, workers int) error {
 	}
 }
 
-func getDownloadLinks(rawURLs []string) []string {
-	directLinks := []string{}
+
+func createGrabRequests(rawURLs []string) []*grab.Request {
+	reqs := []*grab.Request{}
 	for _, rawURL := range rawURLs {
-		directLink := rawURL
+		var req *grab.Request
+		var fi *fsend.FileInfo
+		downloadLink, dst := rawURL, "."
+
 		URL, err := url.Parse(rawURL)
 		if err != nil {
 			failed++
@@ -242,19 +246,56 @@ func getDownloadLinks(rawURLs []string) []string {
 			continue
 		}
 
-		hostName := URL.Hostname()
-		if hostName == "we.tl" || hostName == "wetransfer.com" {
+		switch URL.Hostname() {
+		case "we.tl", "wetransfer.com":
+			// TODO subdomains, e.g/ sub.wetransfer.com
 			// TODO make it run in concurrency
-			directLink, err = wt.GetDirectLink(rawURL)
+			downloadLink, err = wt.GetDirectLink(rawURL)
 			if err != nil {
 				failed++
 				fmt.Fprintf(os.Stderr, "Error downloading %s: %v\n", rawURL, err)
 				continue
 			}
+		case "send.firefox.com":
+			// TODO custom domain too
+			fi, err = fsend.PrepareDownload(rawURL, "", false)
+			if err != nil {
+				failed++
+				fmt.Fprintf(os.Stderr, "Error downloading %s: %v\n", rawURL, err)
+				continue
+			}
+
+			downloadLink, dst = fmt.Sprintf(fi.BaseURL+"api/download/%s", fi.FileID), fi.Name
 		}
-		directLinks = append(directLinks, directLink)
+
+		req, err = grab.NewRequest(dst, downloadLink)
+		if err != nil {
+			failed++
+			fmt.Fprintf(os.Stderr, "Error downloading %s: %v\n", rawURL, err)
+			continue
+		}
+
+		if fi != nil {
+			func(key, iv []byte, size int64) {
+				req.GetReader = func(reader io.Reader) (io.Reader, error) {
+					// https://www.w3.org/TR/WebCryptoAPI/#aes-gcm-operations
+					r, err := aesgcm.NewGcmDecryptReader(reader, key, iv, nil, size)
+					if err != nil {
+						return nil, err
+					}
+					return r, nil
+				}
+			}(fi.Key.EncryptKey, fi.Key.EncryptIV, fi.Size)
+
+			req.HTTPRequest.Header.Set("Authorization", fi.Key.AuthHeader())
+			req.Size = fi.Size
+			fi = nil
+		}
+
+		reqs = append(reqs, req)
 	}
-	return directLinks
+
+	return reqs
 }
 
 // updateUI prints the progress of all downloads to the terminal
